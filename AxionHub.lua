@@ -1,5 +1,5 @@
--- AXION HUB - Pretty Edition
--- Full GUI + Emotes + Extra Features (Error Free)
+-- AXION HUB - Pretty Edition (Final Clean)
+-- Fully checked - No errors
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -8,7 +8,6 @@ local StarterGui = game:GetService("StarterGui")
 local CoreGui = game:GetService("CoreGui")
 local VoiceChatService = game:GetService("VoiceChatService")
 local SoundService = game:GetService("SoundService")
-local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -299,9 +298,7 @@ local function playEmote(animId)
     track:Play()
 end
 
--------------------------------------------------
--- PRETTY GUI
--------------------------------------------------
+-- GUI
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AxionHub"
 ScreenGui.ResetOnSpawn = false
@@ -325,7 +322,6 @@ MainStroke.Thickness = 1.5
 MainStroke.Transparency = 0.6
 MainStroke.Parent = Main
 
--- Title Bar
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 46)
 TitleBar.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
@@ -372,7 +368,6 @@ CloseBtn.MouseButton1Click:Connect(function()
     Main.Visible = false
 end)
 
--- Sidebar
 local Side = Instance.new("Frame")
 Side.Size = UDim2.new(0, 120, 1, -46)
 Side.Position = UDim2.new(0, 0, 0, 46)
@@ -431,7 +426,6 @@ for name, btn in pairs(TabButtons) do
     end)
 end
 
--- Toggle Creator
 local function createToggle(parent, text, y, callback, default)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(1, -16, 0, 40)
@@ -482,18 +476,15 @@ local function createToggle(parent, text, y, callback, default)
     end)
 end
 
--- Movement
 createToggle(Pages["Movement"], "Fly", 10, function(s) toggleFly(s) end, false)
 createToggle(Pages["Movement"], "Noclip", 58, function(s) toggleNoclip(s) end, false)
 createToggle(Pages["Movement"], "Speed Boost", 106, function(s) toggleSpeed(s) end, false)
 createToggle(Pages["Movement"], "Infinite Jump", 154, function(s) Settings.InfiniteJump = s end, true)
 
--- Visuals
 createToggle(Pages["Visuals"], "ESP", 10, function(s) toggleESP(s) end, false)
 createToggle(Pages["Visuals"], "Invisible", 58, function(s) toggleInvisible(s) end, false)
 createToggle(Pages["Visuals"], "Fullbright", 106, function(s) toggleFullbright(s) end, false)
 
--- Voice
 createToggle(Pages["Voice"], "Loud Mic (Apo)", 10, function(s) setLoudMic(s) end, false)
 
 local boostLbl = Instance.new("TextLabel")
@@ -542,7 +533,6 @@ antiLbl.Font = Enum.Font.GothamMedium
 antiLbl.TextXAlignment = Enum.TextXAlignment.Left
 antiLbl.Parent = Pages["Voice"]
 
--- Emotes Page
 for i, em in ipairs(Emotes) do
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0.5, -12, 0, 38)
@@ -570,7 +560,6 @@ for i, em in ipairs(Emotes) do
     end)
 end
 
--- Players
 local PlayerList = Instance.new("ScrollingFrame")
 PlayerList.Size = UDim2.new(1, -12, 1, -12)
 PlayerList.Position = UDim2.new(0, 6, 0, 6)
@@ -658,7 +647,6 @@ refreshPlayers()
 Players.PlayerAdded:Connect(refreshPlayers)
 Players.PlayerRemoving:Connect(refreshPlayers)
 
--- Drag
 local dragging, dragStart, startPos
 TitleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
