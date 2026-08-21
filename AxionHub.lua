@@ -1,8 +1,8 @@
 --[[
-  BF Full Hub — Axion
-  v2.1.2 — Lotus methods + full UI
+  BF Full Hub - Axion
+  v2.1.2 - Lotus methods + full UI
   FastAttack / CommF_ / QuestController / smartTween / bringMob
-  Fluent UI · No Key · Multi-executor
+  Fluent UI | No Key | Multi-executor
 ]]
 
 print("[BFHub] script start")
@@ -95,7 +95,7 @@ task.spawn(function()
 end)
 
 --------------------------------------------------------------------
--- Sea detect (Lotus style — MAP attribute)
+-- Sea detect (Lotus style - MAP attribute)
 --------------------------------------------------------------------
 local PLACE_ID = {}
 PLACE_ID.sea1 = function()
@@ -222,7 +222,7 @@ local function equipWeapon(weapon_type)
 end
 
 --------------------------------------------------------------------
--- FastAttack (Lotus modern — RegisterAttack / RegisterHit + seed XOR)
+-- FastAttack (Lotus modern - RegisterAttack / RegisterHit + seed XOR)
 --------------------------------------------------------------------
 local netRemote, netId
 pcall(function()
@@ -332,7 +332,7 @@ local function AttackModern()
 end
 
 --------------------------------------------------------------------
--- Bring mob (Lotus — network ownership + stack CFrame)
+-- Bring mob (Lotus - network ownership + stack CFrame)
 --------------------------------------------------------------------
 local function bringMob(nameFilter, maxCount)
     BindCharacter(LP.Character)
@@ -528,7 +528,7 @@ task.spawn(function()
 end)
 
 --------------------------------------------------------------------
--- Quest system (Lotus — live game modules)
+-- Quest system (Lotus - live game modules)
 --------------------------------------------------------------------
 local QuestController = {
     CurrentQuest = "",
@@ -1254,7 +1254,7 @@ SpawnFlagLoop("ESPBosses", 2.0, function()
 end)
 
 --------------------------------------------------------------------
--- Fluent UI (hardened load — multi mirror + game HttpGet fallback)
+-- Fluent UI (hardened load - multi mirror + game HttpGet fallback)
 --------------------------------------------------------------------
 local Fluent
 local fluentUrls = {
@@ -1311,7 +1311,7 @@ if Fluent then
     local okWin, errWin = pcall(function()
         Window = Fluent:CreateWindow({
             Title = "BF Full Hub  " .. Hub.Version,
-            SubTitle = "Axion · Lotus methods · No Key",
+            SubTitle = "Axion | Lotus methods | No Key",
             TabWidth = 160,
             Size = UDim2.fromOffset(580, 460),
             Acrylic = false,
@@ -1327,7 +1327,7 @@ if Fluent then
 end
 
 if not Window then
-    notify("BF Hub", "Fluent UI failed to load — try rejoin / another executor", 6)
+    notify("BF Hub", "Fluent UI failed to load - try rejoin / another executor", 6)
     getgenv().BFHub_SetFlag = SetFlag
     print("[BFHub] running headless flags only")
 else
@@ -1412,7 +1412,7 @@ else
     -- MAIN
     ----------------------------------------------------------------
     S(Main, "Status")
-    Para(Main, "BF Full Hub", "Lotus FastAttack · live Quest · smartTween · bringMob\nVersion " .. Hub.Version)
+    Para(Main, "BF Full Hub", "Lotus FastAttack | live Quest | smartTween | bringMob\nVersion " .. Hub.Version)
     S(Main, "Quick")
     T(Main, "Auto Farm Level", "AutoFarmLevel", false)
     T(Main, "Bring Enemy", "BringEnemy", true)
@@ -1610,7 +1610,7 @@ else
         end)
     end)
 
-    notify("BF Hub", "UI loaded · v" .. Hub.Version, 4)
+    notify("BF Hub", "UI loaded | v" .. Hub.Version, 4)
     print("[BFHub] UI bound OK")
 end
 
