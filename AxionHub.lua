@@ -1,9 +1,11 @@
 --[[
   BF Full Hub — Axion
-  v2.1.0 — methods ported from live Lotus-style source
+  v2.1.2 — Lotus methods + full UI
   FastAttack / CommF_ / QuestController / smartTween / bringMob
   Fluent UI · No Key · Multi-executor
 ]]
+
+print("[BFHub] script start")
 
 if getgenv().BFHub then
     pcall(function()
@@ -15,9 +17,23 @@ end
 
 local Hub = {
     Flags = {},
-    Version = "2.1.1-lotus-full-ui",
+    Version = "2.1.2-lotus-full-ui",
 }
 getgenv().BFHub = Hub
+
+-- bit32 fallback
+local bit32 = bit32 or bit or {}
+if not bit32.bxor then
+    function bit32.bxor(a, b)
+        local r, p = 0, 1
+        while a > 0 or b > 0 do
+            local ab, bb = a % 2, b % 2
+            if ab ~= bb then r = r + p end
+            a, b, p = math.floor(a / 2), math.floor(b / 2), p * 2
+        end
+        return r
+    end
+end
 
 --------------------------------------------------------------------
 -- Services
@@ -556,15 +572,16 @@ local function GetBestQuest()
     local bestRnq, bestTaskName, bestRidq
     local skip = { BartiloQuest = true, Trainees = true, MarineQuest = true, CitizenQuest = true }
     for rnq, v in pairs(QuestController.CachedQuestData) do
-        if skip[tostring(rnq)] then continue end
-        for ridq, ct in pairs(v) do
-            if ct.LevelReq and ct.LevelReq >= 0 and Level() >= ct.LevelReq then
-                for O, taskValue in pairs(ct.Task or {}) do
-                    if taskValue > 1 and ct.LevelReq > bestLevelReq then
-                        bestLevelReq = ct.LevelReq
-                        bestRnq = rnq
-                        bestTaskName = tostring(O)
-                        bestRidq = ridq
+        if not skip[tostring(rnq)] then
+            for ridq, ct in pairs(v) do
+                if ct.LevelReq and ct.LevelReq >= 0 and Level() >= ct.LevelReq then
+                    for O, taskValue in pairs(ct.Task or {}) do
+                        if taskValue > 1 and ct.LevelReq > bestLevelReq then
+                            bestLevelReq = ct.LevelReq
+                            bestRnq = rnq
+                            bestTaskName = tostring(O)
+                            bestRidq = ridq
+                        end
                     end
                 end
             end
@@ -1247,21 +1264,39 @@ local fluentUrls = {
 }
 
 local function loadFluentLib()
+    print("[BFHub] loading Fluent...")
     -- 1) race cache
     local src = raceHttpGet(fluentUrls, 4.0)
     if src then
-        local ok, lib = pcall(function() return loadstring(src)() end)
-        if ok and lib then return lib end
+        print("[BFHub] Fluent body via race, len=", #src)
+        local fn, err = loadstring(src)
+        if not fn then
+            warn("[BFHub] Fluent loadstring err:", err)
+        else
+            local ok, lib = pcall(fn)
+            if ok and lib then return lib end
+            warn("[BFHub] Fluent exec err:", lib)
+        end
     end
     -- 2) plain game:HttpGet each url
     for _, u in ipairs(fluentUrls) do
+        print("[BFHub] Fluent try", u)
         local ok, body = pcall(function() return game:HttpGet(u, true) end)
         if ok and type(body) == "string" and #body > 500 then
-            local ok2, lib = pcall(function() return loadstring(body)() end)
-            if ok2 and lib then
-                LibCache[u] = body
-                return lib
+            local fn, err = loadstring(body)
+            if fn then
+                local ok2, lib = pcall(fn)
+                if ok2 and lib then
+                    LibCache[u] = body
+                    print("[BFHub] Fluent OK from", u)
+                    return lib
+                end
+                warn("[BFHub] Fluent run fail:", lib)
+            else
+                warn("[BFHub] Fluent parse fail:", err)
             end
+        else
+            warn("[BFHub] HttpGet fail:", u, tostring(body))
         end
     end
     return nil
