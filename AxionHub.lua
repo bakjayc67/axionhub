@@ -1325,7 +1325,7 @@ function CheckQuest()
             LevelQuest = 2
             NameMon = "Head Baker"
             CFrameMon = CFrame.new(- 1926, 88, - 12850)
-            VectorMon = CFrame.new(- 1870, 38, - 12938)
+            VectorMon = Vector3.new(- 1870, 38, - 12938)
             CFrameQuest = CFrame.new(- 1926, 38, - 12850)
             VectorQuest = Vector3.new(- 1926, 38, - 12850)
         elseif v288 == 2300 or v288 <= 2324 then
@@ -1335,7 +1335,7 @@ function CheckQuest()
             LevelQuest = 1
             NameMon = "Cocoa Warrior"
             CFrameMon = CFrame.new(231, 23, - 12194)
-            VectorMon = CFrame.new(231, 23, - 12194)
+            VectorMon = Vector3.new(231, 23, - 12194)
             CFrameQuest = CFrame.new(231, 23, - 12194)
             VectorQuest = Vector3.new(231, 23, - 12194)
         elseif v288 == 2325 or v288 <= 2349 then
@@ -1345,7 +1345,7 @@ function CheckQuest()
             LevelQuest = 2
             NameMon = "Chocolate Bar Battler"
             CFrameMon = CFrame.new(231, 23, - 12194)
-            VectorMon = CFrame.new(231, 23, - 12194)
+            VectorMon = Vector3.new(231, 23, - 12194)
             CFrameQuest = CFrame.new(231, 23, - 12194)
             VectorQuest = Vector3.new(231, 23, - 12194)
         elseif v288 == 2350 or v288 <= 2374 then
@@ -1355,7 +1355,7 @@ function CheckQuest()
             LevelQuest = 1
             NameMon = "Sweet Thief"
             CFrameMon = CFrame.new(71, 77, - 12632)
-            VectorMon = CFrame.new(71, 77, - 12632)
+            VectorMon = Vector3.new(71, 77, - 12632)
             CFrameQuest = CFrame.new(151, 23, - 12774)
             VectorQuest = Vector3.new(151, 23, - 12774)
         elseif v288 == 2375 or v288 <= 2399 then
@@ -1365,7 +1365,7 @@ function CheckQuest()
             LevelQuest = 2
             NameMon = "Candy Rebel"
             CFrameMon = CFrame.new(134, 77, - 12882)
-            VectorMon = CFrame.new(134, 77, - 12882)
+            VectorMon = Vector3.new(134, 77, - 12882)
             CFrameQuest = CFrame.new(151, 23, - 12774)
             VectorQuest = Vector3.new(151, 23, - 12774)
         elseif v288 == 2400 or v288 <= 2424 then
@@ -1375,7 +1375,7 @@ function CheckQuest()
             LevelQuest = 1
             NameMon = "Candy Pirate"
             CFrameMon = CFrame.new(- 1423.4515380859375, 116.5498275756836, - 14603.890625)
-            VectorMon = CFrame.new(- 1423.4515380859375, 116.5498275756836, - 14603.890625)
+            VectorMon = Vector3.new(- 1423.4515380859375, 116.5498275756836, - 14603.890625)
             CFrameQuest = CFrame.new(- 1147.584716796875, 16.232574462890625, - 14445.6279296875)
             VectorQuest = Vector3.new(- 1147.584716796875, 16.232574462890625, - 14445.6279296875)
         elseif v288 >= 2425 then
@@ -1385,7 +1385,7 @@ function CheckQuest()
             LevelQuest = 2
             NameMon = "Snow Demon"
             CFrameMon = CFrame.new(- 941.1054077148438, 56.978214263916016, - 14539.7060546875)
-            VectorMon = CFrame.new(- 941.1054077148438, 56.978214263916016, - 14539.7060546875)
+            VectorMon = Vector3.new(- 941.1054077148438, 56.978214263916016, - 14539.7060546875)
             CFrameQuest = CFrame.new(- 1147.584716796875, 16.232574462890625, - 14445.6279296875)
             VectorQuest = Vector3.new(- 1147.584716796875, 16.232574462890625, - 14445.6279296875)
         end
@@ -2089,7 +2089,9 @@ SpawnFlagLoop("AutoCollectFruit", RunFruitCollect, 0.6)
 SpawnFlagLoop("AutoCakePrince", function() FarmNamedMob("Cake Prince", true) end, 0.12)
 SpawnFlagLoop("AutoDarkbeard", function() FarmNamedMob("Darkbeard", true) end, 0.12)
 SpawnFlagLoop("AutoSoulReaper", function() FarmNamedMob("Soul Reaper", true) end, 0.12)
-SpawnFlagLoop("AutoDonSwan", function() FarmNamedMob("Don Swan", true) or FarmNamedMob("Swan", true) end, 0.12)
+SpawnFlagLoop("AutoDonSwan", function()
+    if not FarmNamedMob("Don Swan", true) then FarmNamedMob("Swan", true) end
+end, 0.12)
 SpawnFlagLoop("AutoBuso", RunHakiAuto, 1.0)
 
 -- material-ish farms
@@ -2099,8 +2101,12 @@ SpawnFlagLoop("AutoFarmMaterial", function()
 end, 0.35)
 
 -- sea events best-effort
-SpawnFlagLoop("AutoTerrorShark", function() FarmNamedMob("Terror", true) or FarmNamedMob("Shark", true) end, 0.15)
-SpawnFlagLoop("AutoSeaBeast", function() FarmNamedMob("Sea Beast", true) or FarmNamedMob("SeaBeast", true) end, 0.15)
+SpawnFlagLoop("AutoTerrorShark", function()
+    if not FarmNamedMob("Terror", true) then FarmNamedMob("Shark", true) end
+end, 0.15)
+SpawnFlagLoop("AutoSeaBeast", function()
+    if not FarmNamedMob("Sea Beast", true) then FarmNamedMob("SeaBeast", true) end
+end, 0.15)
 SpawnFlagLoop("AutoLeviathan", function() FarmNamedMob("Leviathan", true) end, 0.15)
 SpawnFlagLoop("AutoShark", function() FarmNamedMob("Shark", true) end, 0.15)
 SpawnFlagLoop("AutoPiranha", function() FarmNamedMob("Piranha", true) end, 0.15)
@@ -2148,8 +2154,12 @@ SpawnFlagLoop("AutoSanguine", function() TryBuyFightingStyle("BuySanguineArt") e
 
 -- saber / rengoku / pole best-effort named farms
 SpawnFlagLoop("AutoSaber", function() FarmNamedMob("Saber Expert", true) end, 0.12)
-SpawnFlagLoop("AutoRengoku", function() FarmNamedMob("Rengoku", true) or CollectItemsByName("Rengoku") end, 0.4)
-SpawnFlagLoop("AutoPole", function() FarmNamedMob("Thunder God", true) or CollectItemsByName("Pole") end, 0.4)
+SpawnFlagLoop("AutoRengoku", function()
+    if not FarmNamedMob("Rengoku", true) then CollectItemsByName("Rengoku") end
+end, 0.4)
+SpawnFlagLoop("AutoPole", function()
+    if not FarmNamedMob("Thunder God", true) then CollectItemsByName("Pole") end
+end, 0.4)
 
 -- raids: try start via remote
 SpawnFlagLoop("AutoStartRaid", function()
@@ -4210,5 +4220,6 @@ pcall(function()
     end
 end)
 
-Notify("BF Hub", "Loaded · Fluent ready · No Key", 4)
+Notify("BF Hub", "Loaded - Fluent ready - No Key", 4)
 print("[BFHub] UI ready")
+
