@@ -15,7 +15,7 @@ end
 
 local Hub = {
     Flags = {},
-    Version = "2.1.0-lotus-methods",
+    Version = "2.1.1-lotus-full-ui",
 }
 getgenv().BFHub = Hub
 
@@ -1123,45 +1123,187 @@ SpawnFlagLoop("ESPPlayers", 2.0, function()
 end)
 
 --------------------------------------------------------------------
--- Fluent UI
+-- Extra feature loops (restored coverage)
+--------------------------------------------------------------------
+SpawnFlagLoop("AutoFarmEctoplasm", 0.5, function()
+    CollectItemsByName({ "ecto", "Ectoplasm" })
+    for _, n in ipairs({ "Ship Deckhand", "Ship Engineer", "Ship Steward", "Ship Officer" }) do
+        if FindMobByName(n) then FarmNamedMob(n) return end
+    end
+end)
+SpawnFlagLoop("AutoFarmMaterial", 0.5, function()
+    CollectItemsByName({ "material", "ore", "Leather", "Scrap" })
+end)
+SpawnFlagLoop("AutoFarmObservation", 0.4, function()
+    FarmNearestStep()
+end)
+SpawnFlagLoop("FindMirage", 1.0, function()
+    if workspace.Map and workspace.Map:FindFirstChild("MysticIsland") then
+        tween(workspace.Map.MysticIsland:GetPivot(), 350)
+    end
+end)
+SpawnFlagLoop("FindKitsune", 1.0, function()
+    CollectItemsByName({ "Kitsune", "kitsune" })
+end)
+SpawnFlagLoop("FindPrehistoric", 1.0, function()
+    CollectItemsByName({ "Prehistoric", "Dinosaur" })
+end)
+SpawnFlagLoop("AutoRandomFruit", 2.0, function()
+    CommF_("Cousin", "Buy")
+end)
+SpawnFlagLoop("AutoDropFruit", 1.5, function()
+    for _, t in ipairs(LP.Backpack:GetChildren()) do
+        if t:IsA("Tool") and t.Name:find("Fruit") then
+            pcall(function() Humanoid:EquipTool(t) end)
+            task.wait(0.1)
+            pcall(function() Character:FindFirstChildOfClass("Tool"):Destroy() end)
+        end
+    end
+end)
+SpawnFlagLoop("AutoKen", 1.5, function()
+    CommF_("Ken", true)
+    CommF_("Ken")
+end)
+SpawnFlagLoop("AutoSaber", 1.0, function()
+    for _, tip in ipairs({ "Saber" }) do
+        for _, t in ipairs(LP.Backpack:GetChildren()) do
+            if t.Name:find("Saber") then pcall(function() Humanoid:EquipTool(t) end) end
+        end
+    end
+end)
+SpawnFlagLoop("AutoRengoku", 1.0, function()
+    for _, t in ipairs(LP.Backpack:GetChildren()) do
+        if t.Name:find("Rengoku") then pcall(function() Humanoid:EquipTool(t) end) end
+    end
+end)
+SpawnFlagLoop("AutoPole", 1.0, function()
+    for _, t in ipairs(LP.Backpack:GetChildren()) do
+        if t.Name:find("Pole") then pcall(function() Humanoid:EquipTool(t) end) end
+    end
+end)
+SpawnFlagLoop("AutoFishing", 1.2, function()
+    for _, t in ipairs(LP.Backpack:GetChildren()) do
+        if t.Name:lower():find("rod") or t.Name:lower():find("fish") then
+            pcall(function() Humanoid:EquipTool(t) end)
+            FastAttack()
+        end
+    end
+end)
+SpawnFlagLoop("WalkOnWater", 0.4, function()
+    pcall(function()
+        if HRP and HRP.Position.Y < 6 then
+            HRP.CFrame = CFrame.new(HRP.Position.X, 12, HRP.Position.Z)
+        end
+    end)
+end)
+SpawnFlagLoop("InfEnergy", 0.5, function()
+    pcall(function()
+        local e = Character and Character:FindFirstChild("Energy")
+        if e and e:IsA("ValueBase") then e.Value = e.MaxValue or 9999 end
+    end)
+end)
+SpawnFlagLoop("ESPChests", 2.5, function()
+    if not Hub.Flags.ESPChests then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "Chest1" or obj.Name == "Chest2" or obj.Name == "Chest3" then
+            if obj:IsA("BasePart") then
+                makeBillboard(obj, "Chest", Color3.fromRGB(255, 215, 0))
+            end
+        end
+    end
+end)
+SpawnFlagLoop("ESPFruits", 2.5, function()
+    if not Hub.Flags.ESPFruits then return end
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj.Name:find("Fruit") then
+            local p = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+            if p then makeBillboard(p, obj.Name, Color3.fromRGB(100, 255, 100)) end
+        end
+    end
+end)
+SpawnFlagLoop("ESPBosses", 2.0, function()
+    if not Hub.Flags.ESPBosses then return end
+    local enemies = workspace:FindFirstChild("Enemies")
+    if not enemies then return end
+    for _, mob in ipairs(enemies:GetChildren()) do
+        if MobAlive(mob) then
+            local hum = mob:FindFirstChildOfClass("Humanoid")
+            if hum and hum.MaxHealth >= 30000 then
+                local hrp = mob:FindFirstChild("HumanoidRootPart")
+                if hrp then makeBillboard(hrp, mob.Name, Color3.fromRGB(255, 80, 80)) end
+            end
+        end
+    end
+end)
+
+--------------------------------------------------------------------
+-- Fluent UI (hardened load — multi mirror + game HttpGet fallback)
 --------------------------------------------------------------------
 local Fluent
 local fluentUrls = {
     "https://cdn.jsdelivr.net/gh/dawid-scripts/Fluent@master/src/init.lua",
     "https://raw.githubusercontent.com/dawid-scripts/Fluent/master/src/init.lua",
+    "https://cdn.jsdelivr.net/gh/dawid-scripts/Fluent@refs/heads/master/src/init.lua",
 }
-do
-    local src = raceHttpGet(fluentUrls, 3.5)
+
+local function loadFluentLib()
+    -- 1) race cache
+    local src = raceHttpGet(fluentUrls, 4.0)
     if src then
         local ok, lib = pcall(function() return loadstring(src)() end)
-        if ok then Fluent = lib end
+        if ok and lib then return lib end
     end
+    -- 2) plain game:HttpGet each url
+    for _, u in ipairs(fluentUrls) do
+        local ok, body = pcall(function() return game:HttpGet(u, true) end)
+        if ok and type(body) == "string" and #body > 500 then
+            local ok2, lib = pcall(function() return loadstring(body)() end)
+            if ok2 and lib then
+                LibCache[u] = body
+                return lib
+            end
+        end
+    end
+    return nil
 end
+
+Fluent = loadFluentLib()
+print("[BFHub] Fluent", Fluent and "OK" or "FAILED")
 
 local Window, Tabs = nil, {}
 
 if Fluent then
-    pcall(function()
+    local okWin, errWin = pcall(function()
         Window = Fluent:CreateWindow({
             Title = "BF Full Hub  " .. Hub.Version,
             SubTitle = "Axion · Lotus methods · No Key",
-            TabWidth = 150,
-            Size = UDim2.fromOffset(560, 420),
+            TabWidth = 160,
+            Size = UDim2.fromOffset(580, 460),
             Acrylic = false,
             Theme = "Dark",
             MinimizeKey = Enum.KeyCode.LeftControl,
         })
         Hub.Window = Window
     end)
+    if not okWin then
+        warn("[BFHub] CreateWindow failed:", errWin)
+        Window = nil
+    end
 end
 
 if not Window then
-    notify("BF Hub", "Fluent failed — flags still work via getgenv().BFHub.Flags", 5)
+    notify("BF Hub", "Fluent UI failed to load — try rejoin / another executor", 6)
     getgenv().BFHub_SetFlag = SetFlag
+    print("[BFHub] running headless flags only")
 else
-    local function addTab(name)
-        local ok, tab = pcall(function() return Window:AddTab({ Title = name }) end)
-        if ok then Tabs[name] = tab end
+    local function addTab(name, icon)
+        local ok, tab = pcall(function()
+            return Window:AddTab({ Title = name, Icon = icon })
+        end)
+        if not ok then
+            ok, tab = pcall(function() return Window:AddTab({ Title = name }) end)
+        end
+        if ok and tab then Tabs[name] = tab end
         return Tabs[name]
     end
 
@@ -1173,6 +1315,7 @@ else
     local Quests = addTab("Quests")
     local Sea = addTab("Sea Events")
     local Fruits = addTab("Fruits")
+    local Swords = addTab("Swords")
     local Race = addTab("Race / Haki")
     local TP = addTab("Teleport")
     local ESP = addTab("ESP")
@@ -1181,130 +1324,259 @@ else
 
     local function T(tab, title, flag, default)
         if not tab then return end
-        pcall(function()
+        local ok, err = pcall(function()
             tab:AddToggle(flag or title, {
                 Title = title,
-                Default = default or false,
-                Callback = function(v) SetFlag(flag or title, v) end,
+                Default = default == true,
+                Callback = function(v)
+                    SetFlag(flag or title, v)
+                end,
             })
-            if default then SetFlag(flag or title, true) end
+        end)
+        if not ok then warn("[BFHub] toggle", title, err) end
+        if default then SetFlag(flag or title, true) end
+    end
+
+    local function S(tab, title)
+        if not tab then return end
+        pcall(function() tab:AddSection(title) end)
+    end
+
+    local function B(tab, title, fn)
+        if not tab then return end
+        pcall(function()
+            tab:AddButton({
+                Title = title,
+                Callback = function() pcall(fn) end,
+            })
         end)
     end
-    local function S(tab, title)
-        if tab then pcall(function() tab:AddSection(title) end) end
-    end
-    local function B(tab, title, fn)
-        if tab then pcall(function() tab:AddButton({ Title = title, Callback = function() pcall(fn) end }) end) end
-    end
+
     local function Slider(tab, title, flag, min, max, default)
         if not tab then return end
         pcall(function()
             tab:AddSlider(flag, {
-                Title = title, Min = min, Max = max, Default = default,
+                Title = title,
+                Min = min,
+                Max = max,
+                Default = default,
                 Callback = function(v) Hub.Flags[flag] = v end,
             })
-            Hub.Flags[flag] = default
+        end)
+        Hub.Flags[flag] = default
+    end
+
+    local function Para(tab, title, content)
+        if not tab then return end
+        pcall(function()
+            tab:AddParagraph({ Title = title, Content = content })
         end)
     end
 
-    S(Main, "Quick start")
-    pcall(function()
-        Main:AddParagraph({
-            Title = "Methods",
-            Content = "FastAttack Lotus · Quest live modules · smartTween · bringMob\nBật Auto Farm Level để chạy",
-        })
-    end)
+    ----------------------------------------------------------------
+    -- MAIN
+    ----------------------------------------------------------------
+    S(Main, "Status")
+    Para(Main, "BF Full Hub", "Lotus FastAttack · live Quest · smartTween · bringMob\nVersion " .. Hub.Version)
+    S(Main, "Quick")
     T(Main, "Auto Farm Level", "AutoFarmLevel", false)
     T(Main, "Bring Enemy", "BringEnemy", true)
     T(Main, "Attack No CD", "AttackNoCD", true)
     T(Main, "Fast Farm", "FastFarm", true)
     T(Main, "Skill Spam", "SkillSpam", true)
+    T(Main, "Auto Buso", "AutoBuso", true)
 
-    S(Farm, "Level")
+    ----------------------------------------------------------------
+    -- AUTO FARM
+    ----------------------------------------------------------------
+    S(Farm, "Level farm")
     T(Farm, "Auto Farm Level (Quest + Bring)", "AutoFarmLevel", false)
     T(Farm, "Auto Farm Nearest", "AutoFarmNearest", false)
+    T(Farm, "Accept Quests only", "AcceptQuests", false)
     T(Farm, "Bring Enemy", "BringEnemy", true)
     T(Farm, "Fast Farm", "FastFarm", true)
-    T(Farm, "Bypass TP", "BypassTP", false)
+    T(Farm, "Bypass TP (long distance)", "BypassTP", false)
     T(Farm, "Double Attack", "DoubleAttack", true)
     Slider(Farm, "Tween Speed", "TweenSpeed", 150, 350, 280)
     Slider(Farm, "Farm Height", "FarmHeightDistance", 10, 40, 20)
-    S(Farm, "Other")
+    S(Farm, "Other farms")
     T(Farm, "Auto Chest", "AutoFarmChest")
     T(Farm, "Auto Bones", "AutoFarmBones")
+    T(Farm, "Auto Ectoplasm", "AutoFarmEctoplasm")
+    T(Farm, "Auto Material", "AutoFarmMaterial")
+    T(Farm, "Observation farm", "AutoFarmObservation")
     T(Farm, "Mob Aura", "MobAura")
-    Slider(Farm, "Aura Distance", "MobAuraDistance", 20, 200, 80)
+    Slider(Farm, "Mob Aura Distance", "MobAuraDistance", 20, 200, 80)
 
+    ----------------------------------------------------------------
+    -- MASTERY
+    ----------------------------------------------------------------
+    S(Mastery, "Mastery")
     T(Mastery, "Sword Mastery", "MasterySword")
     T(Mastery, "Fruit Mastery", "MasteryFruit")
     T(Mastery, "Gun Mastery", "MasteryGun")
 
+    ----------------------------------------------------------------
+    -- BOSSES
+    ----------------------------------------------------------------
+    S(Bosses, "Bosses")
     T(Bosses, "Auto All Boss", "AutoAllBoss")
     T(Bosses, "Cake Prince", "AutoCakePrince")
     T(Bosses, "Darkbeard", "AutoDarkbeard")
     T(Bosses, "Soul Reaper", "AutoSoulReaper")
     T(Bosses, "Don Swan", "AutoDonSwan")
-    T(Bosses, "Elite (Diablo)", "AutoEliteHunter")
+    T(Bosses, "Elite Hunter", "AutoEliteHunter")
 
+    ----------------------------------------------------------------
+    -- RAIDS
+    ----------------------------------------------------------------
+    S(Raids, "Raids")
     T(Raids, "Auto Start Raid", "AutoStartRaid")
     T(Raids, "Auto Complete Raid", "AutoCompleteRaid")
 
-    T(Quests, "Accept Quests", "AcceptQuests")
+    ----------------------------------------------------------------
+    -- QUESTS
+    ----------------------------------------------------------------
+    S(Quests, "Quests")
+    T(Quests, "Accept Quests (by level)", "AcceptQuests")
     T(Quests, "Auto Farm Level", "AutoFarmLevel")
 
+    ----------------------------------------------------------------
+    -- SEA
+    ----------------------------------------------------------------
+    S(Sea, "Sea events")
     T(Sea, "Terror Shark", "AutoTerrorShark")
     T(Sea, "Sea Beast", "AutoSeaBeast")
     T(Sea, "Leviathan", "AutoLeviathan")
     T(Sea, "Shark", "AutoShark")
     T(Sea, "Piranha", "AutoPiranha")
+    T(Sea, "Find Mirage", "FindMirage")
+    T(Sea, "Find Kitsune", "FindKitsune")
+    T(Sea, "Find Prehistoric", "FindPrehistoric")
 
+    ----------------------------------------------------------------
+    -- FRUITS
+    ----------------------------------------------------------------
+    S(Fruits, "Fruits")
     T(Fruits, "Collect Fruit", "AutoCollectFruit")
     T(Fruits, "Store Fruit", "AutoStoreFruit")
+    T(Fruits, "Random Fruit buy", "AutoRandomFruit")
+    T(Fruits, "Drop Fruit", "AutoDropFruit")
 
+    ----------------------------------------------------------------
+    -- SWORDS
+    ----------------------------------------------------------------
+    S(Swords, "Equip")
+    T(Swords, "Equip Saber", "AutoSaber")
+    T(Swords, "Equip Rengoku", "AutoRengoku")
+    T(Swords, "Equip Pole", "AutoPole")
+
+    ----------------------------------------------------------------
+    -- RACE / HAKI / STYLES
+    ----------------------------------------------------------------
+    S(Race, "Haki")
     T(Race, "Auto Buso", "AutoBuso", true)
+    T(Race, "Auto Ken", "AutoKen")
+    S(Race, "Fighting styles")
     T(Race, "Buy Superhuman", "BuySuperhuman")
     T(Race, "Buy Godhuman", "BuyGodhuman")
     T(Race, "Buy Death Step", "BuyDeathStep")
-    T(Race, "Buy Sharkman", "BuySharkmanKarate")
+    T(Race, "Buy Sharkman Karate", "BuySharkmanKarate")
     T(Race, "Buy Electric Claw", "BuyElectricClaw")
     T(Race, "Buy Dragon Talon", "BuyDragonTalon")
+    T(Race, "Buy Sanguine Art", "BuySanguineArt")
 
+    ----------------------------------------------------------------
+    -- TELEPORT
+    ----------------------------------------------------------------
     S(TP, "Islands")
-    pcall(function()
+    do
         local names = {}
         for n in pairs(IslandCFrames) do table.insert(names, n) end
         table.sort(names)
-        TP:AddDropdown("IslandTP", { Title = "Select Island", Values = names, Multi = false, Default = 1 })
-        B(TP, "Teleport", function()
-            local opt = Fluent.Options and Fluent.Options.IslandTP
-            local val = opt and (opt.Value or opt.Selected) or names[1]
-            if type(val) == "table" then val = val[1] end
+        pcall(function()
+            TP:AddDropdown("IslandTP", {
+                Title = "Select Island",
+                Values = names,
+                Multi = false,
+                Default = 1,
+            })
+        end)
+        B(TP, "Teleport to Island", function()
+            local val = names[1]
+            pcall(function()
+                local opt = Fluent.Options and Fluent.Options.IslandTP
+                if opt then
+                    val = opt.Value or opt.Selected or val
+                    if type(val) == "table" then val = val[1] or names[1] end
+                end
+            end)
             TeleportToIsland(tostring(val))
         end)
-    end)
+        B(TP, "Tween to current quest mob area", function()
+            local q = GetQuest()
+            if q and q.NameMonster then
+                pcall(function()
+                    local folder = ReplicatedStorage:FindFirstChild("FortBuilderReplicatedSpawnPositionsFolder")
+                    if folder and folder:FindFirstChild(q.NameMonster) then
+                        tween(folder[q.NameMonster]:GetPivot().Position + Vector3.new(0, 25, 0), 350)
+                    end
+                end)
+            end
+        end)
+    end
 
+    ----------------------------------------------------------------
+    -- ESP
+    ----------------------------------------------------------------
+    S(ESP, "ESP")
     T(ESP, "Player ESP", "ESPPlayers")
+    T(ESP, "Chest ESP", "ESPChests")
+    T(ESP, "Fruit ESP", "ESPFruits")
+    T(ESP, "Boss ESP", "ESPBosses")
 
-    T(Combat, "Attack No CD", "AttackNoCD", true)
-    T(Combat, "Skill Spam", "SkillSpam", true)
+    ----------------------------------------------------------------
+    -- COMBAT
+    ----------------------------------------------------------------
+    S(Combat, "Combat")
+    T(Combat, "Attack No CD (FastAttack)", "AttackNoCD", true)
+    T(Combat, "Skill Spam Z/X/C", "SkillSpam", true)
     T(Combat, "Bring Enemy", "BringEnemy", true)
     T(Combat, "Noclip manual", "NoclipManual")
 
+    ----------------------------------------------------------------
+    -- MISC
+    ----------------------------------------------------------------
+    S(Misc, "Utility")
     T(Misc, "Anti AFK", "AntiAFK", true)
+    T(Misc, "Walk on Water", "WalkOnWater")
     T(Misc, "Full Bright", "FullBright")
+    T(Misc, "Inf Energy", "InfEnergy")
+    T(Misc, "Auto Fishing", "AutoFishing")
     B(Misc, "Server Hop", function()
         pcall(function() TeleportService:Teleport(game.PlaceId, LP) end)
     end)
     B(Misc, "Rejoin", function()
-        pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LP) end)
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LP)
+        end)
     end)
     B(Misc, "Destroy Hub", function()
-        pcall(function() if Window then Window:Destroy() end end)
+        pcall(function()
+            if Window and Window.Destroy then Window:Destroy() end
+        end)
         getgenv().BFHub = nil
     end)
 
-    pcall(function() Window:SelectTab(1) end)
-    notify("BF Hub", "v" .. Hub.Version .. " · Lotus methods loaded", 4)
+    -- force select first tab
+    task.defer(function()
+        pcall(function()
+            if Window.SelectTab then Window:SelectTab(1) end
+        end)
+    end)
+
+    notify("BF Hub", "UI loaded · v" .. Hub.Version, 4)
+    print("[BFHub] UI bound OK")
 end
 
 print("[BFHub]", Hub.Version, "ready")
