@@ -389,20 +389,1662 @@ do
             for _, m in ipairs(methods) do
                 local original = tab[m]
                 if type(original) == "function" then
-                    local function wrapped(self, ...)
+                    tab[m] = function(self, ...)
                         local ok, a, b, c = pcall(original, self, ...)
                         if ok then return a, b, c end
                         warn("[BFHub] UI", tname, m, ":", tostring(a))
                         return nil
                     end
-                    tab[m] = wrapped
                 end
             end
         end
     end
 end
 
+-- ===== UI CONTROLS (bound early so empty tabs never happen) =====
+-- AUTO FARM
+-------------------------------------------------
 
+
+pcall(function() Tabs.Main:AddSection("Status") end)
+local StatusPara = nil
+pcall(function()
+    StatusPara = Tabs.Main:AddParagraph({
+        Title = "Farm Status",
+        Content = "Level: - | Quest: - | Mob: -"
+    })
+end)
+-- guarantee at least one visible control on Main
+pcall(function()
+    Tabs.Main:AddToggle("HubReady", {
+        Title = "Hub Loaded (ignore)",
+        Default = true,
+        Callback = function() end
+    })
+end)
+pcall(function()
+    Tabs.Farm:AddToggle("UITestFarm", {
+        Title = "UI Test - if you see this, toggles work",
+        Default = false,
+        Callback = function(v) Notify("UI", v and "ok" or "off") end
+    })
+end)
+task.spawn(function()
+    while true do
+        task.wait(1)
+        pcall(function()
+            local lv = "?"
+            pcall(function() lv = tostring(LocalPlayer.Data.Level.Value) end)
+            local q = QuestName or CurrentQuest and CurrentQuest.NameQuest or "-"
+            local m = Name or CurrentQuest and CurrentQuest.Mon or "-"
+            SetParagraph(StatusPara, string.format("Level: %s | Quest: %s | Mob: %s", lv, tostring(q), tostring(m)))
+        end)
+    end
+end)
+
+pcall(function() Tabs.Farm:AddSection("Auto Farm") end)
+
+Tabs.Farm:AddToggle("AutoFarmLevel", {
+    Title = "Auto Farm Level (Quest + Bring)",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoFarmLevel", v)
+        if v then
+            Notify("Farm", "Quest farm started — accept + bring mobs")
+            task.spawn(function()
+                while GetFlag("AutoFarmLevel") do
+                    pcall(DoQuestFarmStep)
+                    task.wait(GetFlag("FastFarm") and 0.06 or 0.1)
+                end
+            end)
+        end
+    end
+})
+
+Tabs.Farm:AddToggle("AutoFarmNearest", {
+    Title = "Auto Farm Nearest",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoFarmNearest", v)
+        if v then
+            task.spawn(function()
+                while GetFlag("AutoFarmNearest") do
+                    local mob = GetNearestEnemy(GetFlag("MobAuraDistance") or 800)
+                    if mob and mob:FindFirstChild("HumanoidRootPart") then
+                        local hrp = mob.HumanoidRootPart
+                        if (HumanoidRootPart.Position - hrp.Position).Magnitude > 25 then
+                            TweenTo(hrp.CFrame * CFrame.new(0, 8, 3), GetFlag("FastFarm") and 500 or 420)
+                        else
+                            pcall(function() HumanoidRootPart.CFrame = hrp.CFrame * CFrame.new(0, 8, 0) end)
+                        end
+                        if GetFlag("BringEnemy") then
+                            StartMagnet = true
+                            PosMon = hrp.CFrame
+                            BringEnemy(mob)
+                        end
+                        AttackNearest()
+                        AttackNoCD(1)
+                    end
+                    task.wait(GetFlag("FastFarm") and 0.04 or 0.06)
+                end
+            end)
+        end
+    end
+})
+
+Tabs.Farm:AddToggle("AutoFarmChest", {
+    Title = "Auto Collect Chest",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoFarmChest", v)
+        if v then
+            task.spawn(function()
+                while GetFlag("AutoFarmChest") do
+                    for _, obj in ipairs(workspace:GetDescendants()) do
+                        if (obj:IsA("Model") or obj:IsA("BasePart")) and obj.Name:lower():find("chest") then
+                            local pos = obj:IsA("Model") and (obj.PrimaryPart and obj.PrimaryPart.Position or obj:GetPivot().Position) or obj.Position
+                            if (HumanoidRootPart.Position - pos).Magnitude < 3000 then
+                                TweenTo(CFrame.new(pos + Vector3.new(0, 3, 0)), 400)
+                                task.wait(0.3)
+                            end
+                        end
+                    end
+                    task.wait(1)
+                end
+            end)
+        end
+    end
+})
+
+Tabs.Farm:AddToggle("AutoBones", {
+    Title = "Auto Bones",
+    Default = false,
+    Callback = function(v) SetFlag("AutoBones", v) end
+})
+
+Tabs.Farm:AddToggle("AutoFarmEctoplasm", {
+    Title = "Auto Farm Ectoplasm",
+    Default = false,
+    Callback = function(v) SetFlag("AutoFarmEctoplasm", v) end
+})
+
+Tabs.Farm:AddToggle("AutoFarmObservation", {
+    Title = "Auto Farm Observation",
+    Default = false,
+    Callback = function(v) SetFlag("AutoFarmObservation", v) end
+})
+
+Tabs.Farm:AddToggle("AutoFarmRaid", {
+    Title = "Auto Farm Raid",
+    Default = false,
+    Callback = function(v) SetFlag("AutoFarmRaid", v) end
+})
+
+Tabs.Farm:AddToggle("SkillSpam", {
+    Title = "Skill Spam (Z/X/C/V)",
+    Default = true,
+    Callback = function(v) SetFlag("SkillSpam", v) end
+})
+Tabs.Farm:AddToggle("FastFarm", {
+    Title = "Fast Farm (speed boost)",
+    Default = true,
+    Callback = function(v) SetFlag("FastFarm", v) end
+})
+Tabs.Farm:AddToggle("BypassTP", {
+    Title = "Bypass TP (long distance)",
+    Default = false,
+    Callback = function(v) SetFlag("BypassTP", v) end
+})
+Tabs.Farm:AddSlider("TweenSpeed", {
+    Title = "Tween Speed",
+    Default = 350,
+    Min = 150,
+    Max = 600,
+    Rounding = 0,
+    Callback = function(v) SetFlag("TweenSpeed", v) end
+})
+Tabs.Farm:AddSlider("DistanceAutoFarm", {
+    Title = "Farm Height Distance",
+    Default = 15,
+    Min = 5,
+    Max = 40,
+    Rounding = 0,
+    Callback = function(v) SetFlag("DistanceAutoFarm", v) end
+})
+Tabs.Farm:AddToggle("BringEnemy", {
+    Title = "Bring Enemy",
+    Default = true,
+    Callback = function(v) SetFlag("BringEnemy", v) end
+})
+
+Tabs.Farm:AddToggle("MobAura", {
+    Title = "Mob Aura",
+    Default = false,
+    Callback = function(v) SetFlag("MobAura", v) end
+})
+
+Tabs.Farm:AddSlider("MobAuraDistance", {
+    Title = "Distance Mob Aura",
+    Default = 1000,
+    Min = 50,
+    Max = 2000,
+    Rounding = 0,
+    Callback = function(v) SetFlag("MobAuraDistance", v) end
+})
+
+Tabs.Bosses:AddToggle("AutoAllBoss", {
+    Title = "Auto All Boss",
+    Default = false,
+    Callback = function(v) SetFlag("AutoAllBoss", v) end
+})
+
+Tabs.Farm:AddToggle("DoubleAttack", {
+    Title = "Double Attack (Fruit + Melee M1)",
+    Default = false,
+    Callback = function(v)
+        SetFlag("DoubleAttack", v)
+        if v then
+            task.spawn(function()
+                while GetFlag("DoubleAttack") do
+                    -- alternate fruit M1 and melee
+                    VirtualUser:ClickButton1(Vector2.new())
+                    task.wait(0.12)
+                end
+            end)
+        end
+    end
+})
+
+Tabs.Farm:AddToggle("AutoFarmMaterial", {
+    Title = "Auto Farm Material + Volcanic Magnet",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoFarmMaterial", v)
+        if v then
+            Notify("Material Farm", "Farming materials & crafting Volcanic Magnet")
+        end
+    end
+})
+
+-------------------------------------------------
+-- MASTERY
+-------------------------------------------------
+Tabs.Mastery:AddToggle("AutoMasterySword", {
+    Title = "Auto Mastery All Sword",
+    Default = false,
+    Callback = function(v) SetFlag("AutoMasterySword", v) end
+})
+
+Tabs.Mastery:AddToggle("AutoMasteryFruit", {
+    Title = "Auto Mastery Fruits",
+    Default = false,
+    Callback = function(v) SetFlag("AutoMasteryFruit", v) end
+})
+
+Tabs.Mastery:AddToggle("AutoMasteryGun", {
+    Title = "Auto Mastery Gun",
+    Default = false,
+    Callback = function(v) SetFlag("AutoMasteryGun", v) end
+})
+
+Tabs.Mastery:AddToggle("NPCAimbotMastery", {
+    Title = "NPC Aimbot (Mastery)",
+    Default = false,
+    Callback = function(v) SetFlag("NPCAimbotMastery", v) end
+})
+
+Tabs.Mastery:AddSlider("MasteryLock", {
+    Title = "Sword Mastery Level Lock",
+    Default = 600,
+    Min = 0,
+    Max = 600,
+    Rounding = 0,
+    Callback = function(v) SetFlag("MasteryLock", v) end
+})
+
+-------------------------------------------------
+-- BOSSES
+-------------------------------------------------
+local BossList = {
+    "Cake Prince", "Dough King", "Darkbeard", "Soul Reaper", "Rip_Indra",
+    "Ice Admiral", "Awakened Ice Admiral", "Magma Admiral", "Smoke Admiral",
+    "Thunder God", "Tide Keeper", "Cursed Captain", "Don Swan", "Diamond",
+    "Jeremy", "Fajita", "Captain Elephant", "Beautiful Pirate", "Longma",
+    "Stone", "Island Empress", "Kilo Admiral", "Warden", "Chief Warden",
+    "Swan", "Greybeard", "The Gorilla King", "Bobby", "Yeti", "Saber Expert",
+    "Forest Pirate", "Cake Queen", "Head Baker", "Baking Staff", "Cookie Crafter",
+    "Cake Guard", "Chocolate Bar Battler", "Sweet Thief", "Candy Rebel",
+    "Peanut Scout", "Ice Cream Chef", "Ice Cream Commander", "Cocoa Warrior",
+    "Living Zombie", "Reborn Skeleton", "Demonic Soul", "Posessed Mummy",
+    "Ghost", "Mythological Pirate", "Fishman Lord", "Fishman Captain",
+    "Arctic Warrior", "Snow Lurker", "Elite Hunter", "Hydra Leader",
+    "Dragon Crew Warrior", "Dragon Crew Archer", "Venomous Assailant",
+    "Marine Captain", "Marine Rear Admiral", "Vice Admiral", "Mob Leader",
+    "Galley Captain", "Pirate Millionaire", "Pistol Billionaire", "The Saw",
+    "The Sentinel", "Heaven's Guardian", "Hell's Messenger", "Order"
+}
+
+Tabs.Bosses:AddDropdown("SelectedBoss", {
+    Title = "Select Boss",
+    Values = BossList,
+    Multi = false,
+    Default = 1,
+    Callback = function(v) SetFlag("SelectedBoss", v) end
+})
+
+Tabs.Bosses:AddToggle("AutoKillBoss", {
+    Title = "Auto Kill Selected Boss",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoKillBoss", v)
+        if v then
+            task.spawn(function()
+                while GetFlag("AutoKillBoss") do
+                    local targetName = GetFlag("SelectedBoss")
+                    local enemies = workspace:FindFirstChild("Enemies")
+                    if enemies then
+                        local boss = enemies:FindFirstChild(targetName)
+                        if boss and boss:FindFirstChild("HumanoidRootPart") and boss.Humanoid.Health > 0 then
+                            TweenTo(boss.HumanoidRootPart.CFrame * CFrame.new(0, 15, 0), 350)
+                            if GetFlag("BringEnemy") then BringEnemy(boss) end
+                            AttackNearest()
+                        end
+                    end
+                    task.wait(0.2)
+                end
+            end)
+        end
+    end
+})
+
+Tabs.Bosses:AddToggle("AutoCakePrince", {
+    Title = "Auto Cake Prince",
+    Default = false,
+    Callback = function(v) SetFlag("AutoCakePrince", v) end
+})
+
+Tabs.Bosses:AddToggle("AutoDarkbeard", {
+    Title = "Auto Darkbeard",
+    Default = false,
+    Callback = function(v) SetFlag("AutoDarkbeard", v) end
+})
+
+Tabs.Bosses:AddToggle("AutoSoulReaper", {
+    Title = "Auto Soul Reaper [Fully]",
+    Default = false,
+    Callback = function(v) SetFlag("AutoSoulReaper", v) end
+})
+
+Tabs.Bosses:AddToggle("AutoDonSwan", {
+    Title = "Auto Unlocked DonSwan",
+    Default = false,
+    Callback = function(v) SetFlag("AutoDonSwan", v) end
+})
+
+Tabs.Bosses:AddToggle("BossNotify", {
+    Title = "Boss Spawn Notification",
+    Default = true,
+    Callback = function(v)
+        SetFlag("BossNotify", v)
+        if v then
+            Connect("BossSpawn", workspace.ChildAdded, function(child)
+                if table.find(BossList, child.Name) then
+                    Notify("Boss Spawned!", child.Name .. " is in the server!", 6)
+                end
+            end)
+        else
+            Disconnect("BossSpawn")
+        end
+    end
+})
+
+Tabs.Bosses:AddToggle("EliteHunter", {
+    Title = "Elite Hunter Status",
+    Default = false,
+    Callback = function(v) SetFlag("EliteHunter", v) end
+})
+
+-------------------------------------------------
+-- RAIDS / DUNGEONS
+-------------------------------------------------
+Tabs.Raids:AddToggle("AutoStartRaid", {
+    Title = "Auto Start Raid",
+    Default = false,
+    Callback = function(v) SetFlag("AutoStartRaid", v) end
+})
+
+Tabs.Raids:AddToggle("AutoCompleteRaid", {
+    Title = "Auto Complete Raid [Safety]",
+    Default = false,
+    Callback = function(v) SetFlag("AutoCompleteRaid", v) end
+})
+
+Tabs.Raids:AddToggle("AutoFactoryRaid", {
+    Title = "Auto Factory Raid",
+    Default = false,
+    Callback = function(v) SetFlag("AutoFactoryRaid", v) end
+})
+
+Tabs.Raids:AddToggle("AutoPirateRaid", {
+    Title = "Auto Pirate Raid",
+    Default = false,
+    Callback = function(v) SetFlag("AutoPirateRaid", v) end
+})
+
+Tabs.Raids:AddToggle("AutoSelectChip", {
+    Title = "Auto Select Dungeon Chip",
+    Default = false,
+    Callback = function(v) SetFlag("AutoSelectChip", v) end
+})
+
+Tabs.Raids:AddToggle("BuyChipBeli", {
+    Title = "Buy Dungeon Chips [Beli]",
+    Default = false,
+    Callback = function(v) SetFlag("BuyChipBeli", v) end
+})
+
+Tabs.Raids:AddToggle("BuyChipFruit", {
+    Title = "Buy Dungeon Chips [Devil Fruit]",
+    Default = false,
+    Callback = function(v) SetFlag("BuyChipFruit", v) end
+})
+
+Tabs.Raids:AddToggle("AutoUnlockDough", {
+    Title = "Auto Unlock Dough Dungeon",
+    Default = false,
+    Callback = function(v) SetFlag("AutoUnlockDough", v) end
+})
+
+Tabs.Raids:AddToggle("AutoUnlockPhoenix", {
+    Title = "Auto Unlock Phoenix Dungeon",
+    Default = false,
+    Callback = function(v) SetFlag("AutoUnlockPhoenix", v) end
+})
+
+Tabs.Raids:AddToggle("StartLawRaid", {
+    Title = "Start Law Raids",
+    Default = false,
+    Callback = function(v) SetFlag("StartLawRaid", v) end
+})
+
+-------------------------------------------------
+-- QUESTS / TRIALS / CDK
+-------------------------------------------------
+Tabs.Quests:AddToggle("AutoAcceptQuest", {
+    Title = "Accept Quests (by level)",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoAcceptQuest", v)
+        if v then
+            task.spawn(function()
+                while GetFlag("AutoAcceptQuest") do
+                    CheckQuest()
+                    if CurrentQuest.NameQuest and not HasActiveQuest() then
+                        if CurrentQuest.CFrameQuest then
+                            TweenTo(CurrentQuest.CFrameQuest, 350)
+                        end
+                        StartQuestRemote(CurrentQuest.NameQuest, CurrentQuest.LevelQuest)
+                    end
+                    task.wait(1.2)
+                end
+            end)
+        end
+    end
+})
+
+Tabs.Quests:AddToggle("AutoBartilo", {
+    Title = "Auto Done Bartilo Quest",
+    Default = false,
+    Callback = function(v) SetFlag("AutoBartilo", v) end
+})
+
+Tabs.Quests:AddToggle("AutoCitizen", {
+    Title = "Auto Done Citizen Quest",
+    Default = false,
+    Callback = function(v) SetFlag("AutoCitizen", v) end
+})
+
+Tabs.Quests:AddToggle("AutoEliteQuest", {
+    Title = "Auto Elite Quest",
+    Default = false,
+    Callback = function(v) SetFlag("AutoEliteQuest", v) end
+})
+
+Tabs.Quests:AddToggle("AutoCDK", {
+    Title = "Auto Get CDK [Last Quest]",
+    Default = false,
+    Callback = function(v) SetFlag("AutoCDK", v) end
+})
+
+Tabs.Quests:AddToggle("AutoTushita", {
+    Title = "Auto Tushita CDK / Sword",
+    Default = false,
+    Callback = function(v) SetFlag("AutoTushita", v) end
+})
+
+Tabs.Quests:AddToggle("AutoYama", {
+    Title = "Auto Yama CDK / Sword",
+    Default = false,
+    Callback = function(v) SetFlag("AutoYama", v) end
+})
+
+Tabs.Quests:AddToggle("AutoZou", {
+    Title = "Auto Zou Quest",
+    Default = false,
+    Callback = function(v) SetFlag("AutoZou", v) end
+})
+
+Tabs.Quests:AddToggle("AutoDragoV1", {
+    Title = "Auto Drago (V1)",
+    Default = false,
+    Callback = function(v) SetFlag("AutoDragoV1", v) end
+})
+
+Tabs.Quests:AddToggle("AutoDragoV2", {
+    Title = "Auto Drago (V2)",
+    Default = false,
+    Callback = function(v) SetFlag("AutoDragoV2", v) end
+})
+
+Tabs.Quests:AddToggle("AutoDragoV3", {
+    Title = "Auto Drago (V3)",
+    Default = false,
+    Callback = function(v) SetFlag("AutoDragoV3", v) end
+})
+
+Tabs.Quests:AddToggle("AutoTrainDragoV4", {
+    Title = "Auto Train Drago v4",
+    Default = false,
+    Callback = function(v) SetFlag("AutoTrainDragoV4", v) end
+})
+
+Tabs.Quests:AddToggle("AutoDragonTalon", {
+    Title = "Auto DragonTalon",
+    Default = false,
+    Callback = function(v) SetFlag("AutoDragonTalon", v) end
+})
+
+Tabs.Quests:AddToggle("AutoDragonHunter", {
+    Title = "Auto Dragon Hunter",
+    Default = false,
+    Callback = function(v) SetFlag("AutoDragonHunter", v) end
+})
+
+Tabs.Quests:AddToggle("AutoCollectDragonEggs", {
+    Title = "Auto Collect Dragon Eggs",
+    Default = false,
+    Callback = function(v) SetFlag("AutoCollectDragonEggs", v) end
+})
+
+Tabs.Quests:AddToggle("AutoCompleteTrial", {
+    Title = "Auto Complete Trial Race",
+    Default = false,
+    Callback = function(v) SetFlag("AutoCompleteTrial", v) end
+})
+
+Tabs.Quests:AddToggle("AutoRainbowHaki", {
+    Title = "Auto Rainbow Colors / Haki",
+    Default = false,
+    Callback = function(v) SetFlag("AutoRainbowHaki", v) end
+})
+
+Tabs.Quests:AddToggle("AutoDojo", {
+    Title = "Auto Dojo Trainer / Belt",
+    Default = false,
+    Callback = function(v) SetFlag("AutoDojo", v) end
+})
+
+Tabs.Quests:AddToggle("KillAfterTrial", {
+    Title = "Auto Kill Player After Trial",
+    Default = false,
+    Callback = function(v) SetFlag("KillAfterTrial", v) end
+})
+
+-------------------------------------------------
+-- SEA EVENTS
+-------------------------------------------------
+Tabs.Sea:AddToggle("AutoFindMirage", {
+    Title = "Auto Find Mirage Island",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoFindMirage", v)
+        if v then Notify("Mirage", "Searching for Mirage Island...") end
+    end
+})
+
+Tabs.Sea:AddToggle("AutoFindKitsune", {
+    Title = "Auto Find Kitsune Island",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoFindKitsune", v)
+        if v then Notify("Kitsune", "Searching for Kitsune Island...") end
+    end
+})
+
+Tabs.Sea:AddToggle("AutoFindPrehistoric", {
+    Title = "Auto Find Prehistoric Island",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoFindPrehistoric", v)
+        if v then Notify("Prehistoric", "Searching for Prehistoric Island...") end
+    end
+})
+
+Tabs.Sea:AddToggle("AutoLeviathan", {
+    Title = "Auto Attack Leviathan",
+    Default = false,
+    Callback = function(v) SetFlag("AutoLeviathan", v) end
+})
+
+Tabs.Sea:AddToggle("AutoSeaBeast", {
+    Title = "Auto Attack Sea Beast",
+    Default = false,
+    Callback = function(v) SetFlag("AutoSeaBeast", v) end
+})
+
+Tabs.Sea:AddToggle("AutoTerrorShark", {
+    Title = "Auto Terror Shark",
+    Default = false,
+    Callback = function(v) SetFlag("AutoTerrorShark", v) end
+})
+
+Tabs.Sea:AddToggle("AutoShark", {
+    Title = "Auto Shark",
+    Default = false,
+    Callback = function(v) SetFlag("AutoShark", v) end
+})
+
+Tabs.Sea:AddToggle("AutoPiranha", {
+    Title = "Auto Piranha",
+    Default = false,
+    Callback = function(v) SetFlag("AutoPiranha", v) end
+})
+
+Tabs.Sea:AddToggle("AutoPirateGrandBrigade", {
+    Title = "Auto Attack Pirate Grand Brigade",
+    Default = false,
+    Callback = function(v) SetFlag("AutoPirateGrandBrigade", v) end
+})
+
+Tabs.Sea:AddToggle("AutoCollectMirageChest", {
+    Title = "Auto Collect Mirage Chest",
+    Default = false,
+    Callback = function(v) SetFlag("AutoCollectMirageChest", v) end
+})
+
+Tabs.Sea:AddToggle("IslandNotify", {
+    Title = "Notify Mirage / Kitsune / Prehistoric Spawn",
+    Default = true,
+    Callback = function(v) SetFlag("IslandNotify", v) end
+})
+
+Tabs.Sea:AddToggle("OpenLeviathanGate", {
+    Title = "Open Leviathan Gate / Frozen Dimension",
+    Default = false,
+    Callback = function(v) SetFlag("OpenLeviathanGate", v) end
+})
+
+Tabs.Sea:AddToggle("CraftLeviathan", {
+    Title = "Craft Leviathan Boat / Crown / Shield",
+    Default = false,
+    Callback = function(v) SetFlag("CraftLeviathan", v) end
+})
+
+-------------------------------------------------
+-- FRUITS
+-------------------------------------------------
+Tabs.Fruits:AddToggle("AutoCollectFruit", {
+    Title = "Auto Collect Fruit",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoCollectFruit", v)
+        if v then
+            task.spawn(function()
+                while GetFlag("AutoCollectFruit") do
+                    for _, obj in ipairs(workspace:GetDescendants()) do
+                        if obj.Name:find("Fruit") and obj:IsA("Tool") or (obj:IsA("Model") and obj:FindFirstChild("Handle")) then
+                            local handle = obj:FindFirstChild("Handle") or obj
+                            if handle and handle:IsA("BasePart") then
+                                TweenTo(handle.CFrame, 450)
+                                task.wait(0.4)
+                            end
+                        end
+                    end
+                    task.wait(1.5)
+                end
+            end)
+        end
+    end
+})
+
+Tabs.Fruits:AddToggle("AutoStoreFruit", {
+    Title = "Auto Store Fruit",
+    Default = false,
+    Callback = function(v) SetFlag("AutoStoreFruit", v) end
+})
+
+Tabs.Fruits:AddToggle("AutoDropFruit", {
+    Title = "Auto Drop Fruit",
+    Default = false,
+    Callback = function(v) SetFlag("AutoDropFruit", v) end
+})
+
+Tabs.Fruits:AddToggle("AutoRandomFruit", {
+    Title = "Auto Random Fruit",
+    Default = false,
+    Callback = function(v) SetFlag("AutoRandomFruit", v) end
+})
+
+Tabs.Fruits:AddToggle("AutoTweenFruit", {
+    Title = "Auto Tween to Fruit",
+    Default = false,
+    Callback = function(v) SetFlag("AutoTweenFruit", v) end
+})
+
+Tabs.Fruits:AddToggle("AutoTweenDealer", {
+    Title = "Auto Tween Advanced Fruit Dealer",
+    Default = false,
+    Callback = function(v) SetFlag("AutoTweenDealer", v) end
+})
+
+Tabs.Fruits:AddToggle("FruitESP", {
+    Title = "Fruit ESP",
+    Default = false,
+    Callback = function(v) SetFlag("FruitESP", v) end
+})
+
+Tabs.Fruits:AddToggle("GodChalice", {
+    Title = "Auto Farm God's Chalice / Stop when got",
+    Default = false,
+    Callback = function(v) SetFlag("GodChalice", v) end
+})
+
+Tabs.Fruits:AddToggle("IceWalk", {
+    Title = "Ice Walk",
+    Default = false,
+    Callback = function(v) SetFlag("IceWalk", v) end
+})
+
+-------------------------------------------------
+-- SWORDS / WEAPONS
+-------------------------------------------------
+local SwordList = {
+    "Saber", "Yama", "Tushita", "Cursed Dual Katana", "True Triple Katana",
+    "Rengoku", "Midnight Blade", "Dark Blade", "Bisento", "Pole",
+    "Shark Anchor", "Soul Cane", "Hallow Scythe", "Dragon Trident",
+    "Twin Hooks", "Canvander", "Buddy Sword", "Warden Sword", "Longsword",
+    "Katana", "Cutlass", "Dual Katana", "Triple Katana", "Iron Mace",
+    "Pipe", "Flintlock", "Refined Flintlock", "Musket", "Kabucha",
+    "Serpent Bow", "Skull Guitar", "Valkyrie Helm"
+}
+
+Tabs.Swords:AddDropdown("SelectSword", {
+    Title = "Select Weapon",
+    Values = SwordList,
+    Multi = false,
+    Default = 1,
+    Callback = function(v)
+        SetFlag("SelectSword", v)
+        EquipTool(v)
+    end
+})
+
+Tabs.Swords:AddToggle("AutoEquipSword", {
+    Title = "Auto Equip Selected Sword",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoEquipSword", v)
+        if v then
+            task.spawn(function()
+                while GetFlag("AutoEquipSword") do
+                    local name = GetFlag("SelectSword")
+                    if name then EquipTool(name) end
+                    task.wait(1)
+                end
+            end)
+        end
+    end
+})
+
+Tabs.Swords:AddToggle("AutoSaber", {
+    Title = "Auto Saber Sword",
+    Default = false,
+    Callback = function(v) SetFlag("AutoSaber", v) end
+})
+
+Tabs.Swords:AddToggle("AutoRengoku", {
+    Title = "Auto Rengoku Sword",
+    Default = false,
+    Callback = function(v) SetFlag("AutoRengoku", v) end
+})
+
+Tabs.Swords:AddToggle("AutoPole", {
+    Title = "Auto Pole V1 / V2",
+    Default = false,
+    Callback = function(v) SetFlag("AutoPole", v) end
+})
+
+Tabs.Swords:AddToggle("AutoCDKSword", {
+    Title = "Auto CDK / Tushita / Yama",
+    Default = false,
+    Callback = function(v) SetFlag("AutoCDKSword", v) end
+})
+
+Tabs.Swords:AddToggle("AutoSkullGuitar", {
+    Title = "Auto Skull Guitar",
+    Default = false,
+    Callback = function(v) SetFlag("AutoSkullGuitar", v) end
+})
+
+Tabs.Swords:AddToggle("AutoLegendarySword", {
+    Title = "Tween to Legendary Sword Dealer",
+    Default = false,
+    Callback = function(v) SetFlag("AutoLegendarySword", v) end
+})
+
+Tabs.Swords:AddToggle("AutoGun", {
+    Title = "Auto Gun",
+    Default = false,
+    Callback = function(v) SetFlag("AutoGun", v) end
+})
+
+Tabs.Swords:AddToggle("AutoMelee", {
+    Title = "Auto Melee",
+    Default = false,
+    Callback = function(v) SetFlag("AutoMelee", v) end
+})
+
+-------------------------------------------------
+-- RACE / HAKI / STYLES
+-------------------------------------------------
+Tabs.Race:AddToggle("AutoBuso", {
+    Title = "Auto Turn on Buso",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoBuso", v)
+        if v then
+            task.spawn(function()
+                while GetFlag("AutoBuso") do
+                    FireComm("Buso")
+                    task.wait(1)
+                end
+            end)
+        end
+    end
+})
+
+Tabs.Race:AddToggle("AutoKen", {
+    Title = "Auto Observation / Ken",
+    Default = false,
+    Callback = function(v) SetFlag("AutoKen", v) end
+})
+
+Tabs.Race:AddToggle("AutoRaceV3", {
+    Title = "Auto Turn on Race V3",
+    Default = false,
+    Callback = function(v) SetFlag("AutoRaceV3", v) end
+})
+
+Tabs.Race:AddToggle("AutoRaceV4", {
+    Title = "Auto Turn on Race V4",
+    Default = false,
+    Callback = function(v) SetFlag("AutoRaceV4", v) end
+})
+
+Tabs.Race:AddToggle("AutoTrainV4", {
+    Title = "Auto Train V4",
+    Default = false,
+    Callback = function(v) SetFlag("AutoTrainV4", v) end
+})
+
+Tabs.Race:AddToggle("AutoSuperhuman", {
+    Title = "Auto Superhuman",
+    Default = false,
+    Callback = function(v) SetFlag("AutoSuperhuman", v) end
+})
+
+Tabs.Race:AddToggle("AutoGodhuman", {
+    Title = "Auto Godhuman",
+    Default = false,
+    Callback = function(v) SetFlag("AutoGodhuman", v) end
+})
+
+Tabs.Race:AddToggle("AutoSanguine", {
+    Title = "Auto Sanguine Art",
+    Default = false,
+    Callback = function(v) SetFlag("AutoSanguine", v) end
+})
+
+Tabs.Race:AddToggle("AutoSharkman", {
+    Title = "Auto Sharkman Karate",
+    Default = false,
+    Callback = function(v) SetFlag("AutoSharkman", v) end
+})
+
+Tabs.Race:AddToggle("AutoDeathStep", {
+    Title = "Auto Death Step",
+    Default = false,
+    Callback = function(v) SetFlag("AutoDeathStep", v) end
+})
+
+Tabs.Race:AddToggle("AutoElectricClaw", {
+    Title = "Auto Electric Claw",
+    Default = false,
+    Callback = function(v) SetFlag("AutoElectricClaw", v) end
+})
+
+Tabs.Race:AddToggle("AutoDragonClaw", {
+    Title = "Auto Dragon Claw / Talon",
+    Default = false,
+    Callback = function(v) SetFlag("AutoDragonClaw", v) end
+})
+
+Tabs.Race:AddToggle("InfSoru", {
+    Title = "Instance Soru [INF]",
+    Default = false,
+    Callback = function(v) SetFlag("InfSoru", v) end
+})
+
+Tabs.Race:AddToggle("InfObservation", {
+    Title = "Instance Observation Range [INF]",
+    Default = false,
+    Callback = function(v) SetFlag("InfObservation", v) end
+})
+
+Tabs.Race:AddToggle("InfEnergy", {
+    Title = "Instance Energy [INF]",
+    Default = false,
+    Callback = function(v) SetFlag("InfEnergy", v) end
+})
+
+Tabs.Race:AddToggle("AutoAwaken", {
+    Title = "Auto Awakening",
+    Default = false,
+    Callback = function(v) SetFlag("AutoAwaken", v) end
+})
+
+Tabs.Race:AddToggle("AutoBuyBusoColor", {
+    Title = "Auto Buy Buso Color",
+    Default = false,
+    Callback = function(v) SetFlag("AutoBuyBusoColor", v) end
+})
+
+-------------------------------------------------
+-- TELEPORT (real CFrames checked & filled)
+-------------------------------------------------
+local IslandCFrames = {
+    -- Sea 1
+    ["Pirate Starter"] = CFrame.new(979.799, 16.516, 1429.047),
+    ["Marine Starter"] = CFrame.new(-2566.43, 6.856, 2045.256),
+    ["Middle Town"] = CFrame.new(-690.331, 15.094, 1582.238),
+    ["Jungle"] = CFrame.new(-1612.796, 36.852, 149.128),
+    ["Pirate Village"] = CFrame.new(-1181.309, 4.751, 3803.546),
+    ["Desert"] = CFrame.new(944.158, 20.92, 4373.3),
+    ["Frozen Village"] = CFrame.new(1347.807, 104.668, -1319.737),
+    ["Marine Fortress"] = CFrame.new(-4914.821, 50.964, 4281.028),
+    ["Magma Village"] = CFrame.new(-5247.716, 12.884, 8504.969),
+    ["Fountain City"] = CFrame.new(5127.128, 59.501, 4105.446),
+    ["Skylands"] = CFrame.new(-483.734, 332.038, 595.327),
+    ["Prison"] = CFrame.new(4875.33, 5.652, 734.85),
+    ["Colosseum"] = CFrame.new(-11.311, 29.277, 2771.522),
+    ["Underwater City"] = CFrame.new(-2850.201, 7.392, 5354.993),
+    ["Shank Room"] = CFrame.new(-1442.166, 29.879, -28.355),
+    ["Mob Island"] = CFrame.new(-2850.201, 7.392, 5354.993),
+
+    -- Sea 2
+    ["Kingdom of Rose"] = CFrame.new(-380.479, 77.22, 255.826), -- Cafe area / Rose hub
+    ["Cafe"] = CFrame.new(-380.479, 77.22, 255.826),
+    ["Green Zone"] = CFrame.new(-2245.0, 73.0, -2800.0), -- approximate from common hubs
+    ["Graveyard"] = CFrame.new(-9515.0, 142.0, 5786.0), -- near haunted-ish / adjust live
+    ["Snow Mountain"] = CFrame.new(753.143, 408.236, -5274.615),
+    ["Hot and Cold"] = CFrame.new(-6127.654, 15.952, -5040.286), -- Punk Hazard style
+    ["Cursed Ship"] = CFrame.new(923.0, 125.0, 32865.0), -- common cursed ship
+    ["Ice Castle"] = CFrame.new(5500.0, 40.0, -6200.0),
+    ["Forgotten Island"] = CFrame.new(-3050.0, 240.0, -10250.0),
+    ["Usoap Island"] = CFrame.new(4816.862, 8.46, 2863.82),
+    ["Dark Arena"] = CFrame.new(3780.03, 22.652, -3498.586),
+    ["Factory"] = CFrame.new(424.127, 211.162, -427.54),
+
+    -- Sea 3
+    ["Port Town"] = CFrame.new(-226.751, 20.603, 5538.34),
+    ["Hydra Island"] = CFrame.new(5291.249, 1005.443, 393.762),
+    ["Great Tree"] = CFrame.new(2681.274, 1682.809, -7190.985),
+    ["Floating Turtle"] = CFrame.new(-13274.528, 531.821, -7579.223),
+    ["Castle on the Sea"] = CFrame.new(-5083.26, 314.606, -3175.673),
+    ["Mansion"] = CFrame.new(-378.0, 331.0, 645.0), -- near castle / mansion access
+    ["Haunted Castle"] = CFrame.new(-9515.372, 164.006, 5786.061),
+    ["Ice Cream Island"] = CFrame.new(-902.568, 79.932, -10988.848),
+    ["Peanut Island"] = CFrame.new(-2062.748, 50.474, -10232.568),
+    ["Cake Island"] = CFrame.new(-1884.775, 19.328, -11666.897),
+    ["Cocoa Island"] = CFrame.new(87.943, 73.555, -12319.465),
+    ["Candy Island"] = CFrame.new(-1014.424, 149.111, -14555.963),
+    ["Tiki Outpost"] = CFrame.new(-16218.683, 9.086, 445.618),
+    ["Dragon Dojo"] = CFrame.new(5743.319, 1206.91, 936.011),
+    ["Mini Sky Island"] = CFrame.new(-288.741, 49326.316, -35248.594),
+
+    -- Special
+    ["Temple of Time"] = CFrame.new(28286.0, 14896.0, 102.0), -- common ToT
+    ["Frozen Dimension"] = CFrame.new(-5000.0, 300.0, -12000.0), -- leviathan approach (live adjust)
+}
+
+local IslandNames = {}
+for name in pairs(IslandCFrames) do
+    table.insert(IslandNames, name)
+end
+table.sort(IslandNames)
+
+local function RequestEntrance(pos)
+    pcall(function()
+        local rem = ReplicatedStorage:FindFirstChild("Remotes")
+        if rem and rem:FindFirstChild("CommF_") then
+            rem.CommF_:InvokeServer("requestEntrance", pos)
+        end
+    end)
+end
+
+local function TeleportToIsland(name)
+    local cf = IslandCFrames[name]
+    if not cf then
+        Notify("TP", "No CFrame for " .. tostring(name))
+        return
+    end
+    -- Prefer portal request when available (Castle / Mansion style)
+    if name == "Castle on the Sea" or name == "Mansion" then
+        RequestEntrance(Vector3.new(cf.X, cf.Y, cf.Z))
+        task.wait(0.4)
+    end
+    TweenTo(cf, 350)
+    Notify("TP", "Arrived: " .. name)
+end
+
+Tabs.TP:AddDropdown("SelectIsland", {
+    Title = "Choose Island",
+    Values = IslandNames,
+    Multi = false,
+    Default = 1,
+    Callback = function(v) SetFlag("SelectIsland", v) end
+})
+
+Tabs.TP:AddButton({
+    Title = "Teleport to Selected Island",
+    Callback = function()
+        local name = GetFlag("SelectIsland")
+        if name then
+            TeleportToIsland(name)
+        end
+    end
+})
+
+Tabs.TP:AddToggle("AutoNextIsland", {
+    Title = "Auto Next Island",
+    Default = false,
+    Callback = function(v) SetFlag("AutoNextIsland", v) end
+})
+
+Tabs.TP:AddToggle("BypassTP", {
+    Title = "Turn on Bypass Teleport",
+    Default = false,
+    Callback = function(v) SetFlag("BypassTP", v) end
+})
+
+Tabs.TP:AddButton({
+    Title = "Travel East Blue (World 1)",
+    Callback = function()
+        FireComm("TravelMain")
+    end
+})
+
+Tabs.TP:AddButton({
+    Title = "Travel Dressrosa (World 2)",
+    Callback = function()
+        FireComm("TravelDressrosa")
+    end
+})
+
+Tabs.TP:AddButton({
+    Title = "Travel Zou (World 3)",
+    Callback = function()
+        FireComm("TravelZou")
+    end
+})
+
+Tabs.TP:AddToggle("AutoTweenNPC", {
+    Title = "Auto Tween to NPCs",
+    Default = false,
+    Callback = function(v) SetFlag("AutoTweenNPC", v) end
+})
+
+Tabs.TP:AddToggle("UnlockPortals", {
+    Title = "Unlock All Portals",
+    Default = false,
+    Callback = function(v) SetFlag("UnlockPortals", v) end
+})
+
+Tabs.TP:AddButton({
+    Title = "Teleport to Temple of Time",
+    Callback = function()
+        TeleportToIsland("Temple of Time")
+    end
+})
+
+Tabs.TP:AddButton({
+    Title = "Teleport to Frozen Dimension",
+    Callback = function()
+        TeleportToIsland("Frozen Dimension")
+    end
+})
+
+Tabs.TP:AddButton({
+    Title = "Teleport to Castle on the Sea",
+    Callback = function()
+        TeleportToIsland("Castle on the Sea")
+    end
+})
+
+Tabs.TP:AddButton({
+    Title = "Teleport to Hydra Island",
+    Callback = function()
+        TeleportToIsland("Hydra Island")
+    end
+})
+
+-------------------------------------------------
+-- ESP
+-------------------------------------------------
+local ESPFolder = Instance.new("Folder")
+ESPFolder.Name = "BFHubESP"
+ESPFolder.Parent = CoreGui
+
+
+-- === PORTED from reference: ESP systems ===
+local function _DistM(pos)
+    if not HumanoidRootPart then return 0 end
+    return math.floor((HumanoidRootPart.Position - pos).Magnitude / 3 + 0.5)
+end
+
+local function ClearESPFolder()
+    for _, c in ipairs(ESPFolder:GetChildren()) do
+        c:Destroy()
+    end
+end
+
+local function EnsureBillboard(adornee, name, text, color)
+    if not adornee then return end
+    local existing = adornee:FindFirstChild(name)
+    if existing and existing:IsA("BillboardGui") then
+        local lab = existing:FindFirstChild("ESP")
+        if lab then lab.Text = text end
+        return
+    end
+    local bill = Instance.new("BillboardGui")
+    bill.Name = name
+    bill.Adornee = adornee
+    bill.Size = UDim2.new(0, 200, 0, 40)
+    bill.StudsOffset = Vector3.new(0, 2, 0)
+    bill.AlwaysOnTop = true
+    bill.Parent = ESPFolder
+    local label = Instance.new("TextLabel")
+    label.Name = "ESP"
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = color or Color3.fromRGB(0, 255, 250)
+    label.TextStrokeTransparency = 0.5
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 14
+    label.TextWrapped = true
+    label.Parent = bill
+end
+
+local function UpdatePlayerESP()
+    if not GetFlag("PlayerESP") then return end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+            local head = plr.Character.Head
+            local hum = plr.Character:FindFirstChild("Humanoid")
+            local hp = hum and (math.floor(hum.Health) .. "/" .. math.floor(hum.MaxHealth)) or "?"
+            local col = (plr.Team ~= LocalPlayer.Team) and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 255)
+            EnsureBillboard(head, "NameEsp" .. plr.Name, plr.Name .. " [" .. _DistM(head.Position) .. "M] HP " .. hp, col)
+        end
+    end
+end
+
+local function UpdateIslandESP()
+    if not GetFlag("IslandESP") then return end
+    local wo = workspace:FindFirstChild("_WorldOrigin")
+    local locs = wo and wo:FindFirstChild("Locations")
+    if not locs then return end
+    for _, loc in ipairs(locs:GetChildren()) do
+        if loc.Name ~= "Sea" and loc:IsA("BasePart") then
+            EnsureBillboard(loc, "NameEsp", loc.Name .. "\n" .. _DistM(loc.Position) .. " M", Color3.fromRGB(80, 245, 245))
+        end
+    end
+end
+
+local function UpdateChestESP()
+    if not GetFlag("ChestESP") then return end
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj.Name:find("Chest") then
+            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+            if part then
+                EnsureBillboard(part, "NameEsp", obj.Name .. "\n" .. _DistM(part.Position) .. " M", Color3.fromRGB(0, 255, 250))
+            end
+        end
+    end
+end
+
+local function UpdateFruitESP()
+    if not (GetFlag("FruitESP") or GetFlag("FruitESP2")) then return end
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj.Name:find("Fruit") then
+            local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
+            if handle then
+                EnsureBillboard(handle, "NameEsp", obj.Name .. "\n" .. _DistM(handle.Position) .. " M", Color3.fromRGB(255, 0, 0))
+            end
+        end
+    end
+end
+
+local function UpdateFlowerESP()
+    if not GetFlag("FlowerESP") then return end
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj.Name == "Flower1" or obj.Name == "Flower2" then
+            local col = obj.Name == "Flower1" and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0)
+            local label = obj.Name == "Flower1" and "Blue Flower" or "Red Flower"
+            EnsureBillboard(obj, "NameEsp", label .. "\n" .. _DistM(obj.Position) .. " M", col)
+        end
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        pcall(function()
+            if GetFlag("PlayerESP") then UpdatePlayerESP() end
+            if GetFlag("IslandESP") then UpdateIslandESP() end
+            if GetFlag("ChestESP") then UpdateChestESP() end
+            if GetFlag("FruitESP") or GetFlag("FruitESP2") then UpdateFruitESP() end
+            if GetFlag("FlowerESP") then UpdateFlowerESP() end
+        end)
+    end
+end)
+
+
+local function ClearESP()
+    ESPFolder:ClearAllChildren()
+end
+
+local function CreateESP(part, text, color)
+    if not part then return end
+    local bill = Instance.new("BillboardGui")
+    bill.Name = "ESP_" .. text
+    bill.Adornee = part
+    bill.Size = UDim2.new(0, 120, 0, 40)
+    bill.StudsOffset = Vector3.new(0, 3, 0)
+    bill.AlwaysOnTop = true
+    bill.Parent = ESPFolder
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = color or Color3.fromRGB(255, 255, 0)
+    label.TextStrokeTransparency = 0.3
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 14
+    label.Parent = bill
+end
+
+Tabs.ESP:AddToggle("PlayerESP", {
+    Title = "Esp Players",
+    Default = false,
+    Callback = function(v)
+        SetFlag("PlayerESP", v)
+        if not v then ClearESP() end
+    end
+})
+
+Tabs.ESP:AddToggle("ChestESP", {
+    Title = "Esp Chests",
+    Default = false,
+    Callback = function(v) SetFlag("ChestESP", v) end
+})
+
+Tabs.ESP:AddToggle("FruitESP2", {
+    Title = "Esp Fruits",
+    Default = false,
+    Callback = function(v) SetFlag("FruitESP2", v) end
+})
+
+Tabs.ESP:AddToggle("BerryESP", {
+    Title = "Esp Berries",
+    Default = false,
+    Callback = function(v) SetFlag("BerryESP", v) end
+})
+
+Tabs.ESP:AddToggle("IslandESP", {
+    Title = "Esp Island Location",
+    Default = false,
+    Callback = function(v) SetFlag("IslandESP", v) end
+})
+
+Tabs.ESP:AddToggle("BossESP", {
+    Title = "Esp Bosses / Elite",
+    Default = false,
+    Callback = function(v) SetFlag("BossESP", v) end
+})
+
+Tabs.ESP:AddToggle("FlowerESP", {
+    Title = "Esp Flower",
+    Default = false,
+    Callback = function(v) SetFlag("FlowerESP", v) end
+})
+
+Tabs.ESP:AddToggle("GearESP", {
+    Title = "Esp Gears",
+    Default = false,
+    Callback = function(v) SetFlag("GearESP", v) end
+})
+
+Tabs.ESP:AddToggle("RemoveVFX", {
+    Title = "Remove Death & Respawned VFX",
+    Default = false,
+    Callback = function(v) SetFlag("RemoveVFX", v) end
+})
+
+-------------------------------------------------
+-- COMBAT / AIMBOT
+-------------------------------------------------
+Tabs.Combat:AddToggle("AimbotSkills", {
+    Title = "Aimbot - Skills",
+    Default = false,
+    Callback = function(v) SetFlag("AimbotSkills", v) end
+})
+
+Tabs.Combat:AddToggle("AimbotCamera", {
+    Title = "Aimbot Camera Closest Players",
+    Default = false,
+    Callback = function(v) SetFlag("AimbotCamera", v) end
+})
+
+Tabs.Combat:AddToggle("AutoAimbot", {
+    Title = "Auto Aimbots",
+    Default = false,
+    Callback = function(v) SetFlag("AutoAimbot", v) end
+})
+
+Tabs.Combat:AddToggle("AttackNoCD", {
+    Title = "Attack No CoolDown",
+    Default = false,
+    Callback = function(v) SetFlag("AttackNoCD", v) end
+})
+
+Tabs.Combat:AddToggle("IgnoreSameTeam", {
+    Title = "Ignore Same Team (Aimbot)",
+    Default = true,
+    Callback = function(v) SetFlag("IgnoreSameTeam", v) end
+})
+
+Tabs.Combat:AddToggle("BringMobs", {
+    Title = "Bring Enemy / Mobs",
+    Default = false,
+    Callback = function(v) SetFlag("BringMobs", v) end
+})
+
+Tabs.Combat:AddSlider("NPCHealthSwitch", {
+    Title = "NPC Health % Switch to Weapon",
+    Default = 30,
+    Min = 1,
+    Max = 100,
+    Rounding = 0,
+    Callback = function(v) SetFlag("NPCHealthSwitch", v) end
+})
+
+-------------------------------------------------
+-- FISHING
+-------------------------------------------------
+local Baits = {"Basic Bait", "Good Bait", "Epic Bait", "Carnivore Bait", "Frozen Bait", "Kelp Bait", "Abyssal Bait"}
+local Rods = {"Fishing Rod", "Gold Rod", "Shark Rod", "Shell Rod", "Treasure Rod"}
+
+Tabs.Fish:AddDropdown("SelectBait", {
+    Title = "Select Bait",
+    Values = Baits,
+    Multi = false,
+    Default = 1,
+    Callback = function(v) SetFlag("SelectBait", v) end
+})
+
+Tabs.Fish:AddDropdown("SelectRod", {
+    Title = "Select Fishing Rod",
+    Values = Rods,
+    Multi = false,
+    Default = 1,
+    Callback = function(v) SetFlag("SelectRod", v) end
+})
+
+Tabs.Fish:AddToggle("AutoFishing", {
+    Title = "Auto Fishing",
+    Default = false,
+    Callback = function(v)
+        SetFlag("AutoFishing", v)
+        if v then
+            Notify("Fishing", "Auto Fishing started")
+        end
+    end
+})
+
+-------------------------------------------------
+-- SHOP / CRAFT
+-------------------------------------------------
+Tabs.Shop:AddToggle("AutoStoreFruitShop", {
+    Title = "Auto Store Fruit",
+    Default = false,
+    Callback = function(v) SetFlag("AutoStoreFruitShop", v) end
+})
+
+Tabs.Shop:AddToggle("AutoCraftVolcanic", {
+    Title = "Auto Craft Volcanic Magnet",
+    Default = false,
+    Callback = function(v) SetFlag("AutoCraftVolcanic", v) end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Buy Superhuman",
+    Callback = function() FireComm("BuySuperhuman") end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Buy Godhuman",
+    Callback = function() FireComm("BuyGodhuman") end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Buy Sharkman Karate",
+    Callback = function() FireComm("BuySharkmanKarate") end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Buy Death Step",
+    Callback = function() FireComm("BuyDeathStep") end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Buy Electric Claw",
+    Callback = function() FireComm("BuyElectricClaw") end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Buy Dragon Talon",
+    Callback = function() FireComm("BuyDragonTalon") end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Buy Sanguine Art",
+    Callback = function() FireComm("BuySanguineArt") end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Buy Buso",
+    Callback = function() FireComm("BuyHaki", "Buso") end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Buy Geppo",
+    Callback = function() FireComm("BuyHaki", "Geppo") end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Buy Soru",
+    Callback = function() FireComm("BuyHaki", "Soru") end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Buy Ken",
+    Callback = function() FireComm("BuyHaki", "Ken") end
+})
+
+Tabs.Shop:AddToggle("AutoBuyBusoColorShop", {
+    Title = "Auto Buy Buso Color",
+    Default = false,
+    Callback = function(v) SetFlag("AutoBuyBusoColorShop", v) end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Craft Leviathan Boat",
+    Callback = function() Notify("Craft", "Leviathan Boat") end
+})
+
+Tabs.Shop:AddButton({
+    Title = "Craft Shark Anchor",
+    Callback = function() Notify("Craft", "Shark Anchor") end
+})
+
+-------------------------------------------------
+-- MISC / SETTINGS
+-------------------------------------------------
+Tabs.Misc:AddToggle("AntiAFKToggle", {
+    Title = "Anti AFK",
+    Default = true,
+    Callback = function(v)
+        SetFlag("AntiAFK", v)
+    end
+})
+
+Tabs.Misc:AddToggle("WalkOnWater", {
+    Title = "Walk on Water",
+    Default = false,
+    Callback = function(v)
+        SetFlag("WalkOnWater", v)
+        if v then
+            local part = Instance.new("Part")
+            part.Name = "WalkWater_Part"
+            part.Size = Vector3.new(20, 1, 20)
+            part.Transparency = 1
+            part.Anchored = true
+            part.CanCollide = true
+            part.Parent = workspace
+            Connect("WalkWater", RunService.Heartbeat, function()
+                if HumanoidRootPart then
+                    part.CFrame = CFrame.new(HumanoidRootPart.Position.X, 0.5, HumanoidRootPart.Position.Z)
+                end
+            end)
+        else
+            Disconnect("WalkWater")
+            if workspace:FindFirstChild("WalkWater_Part") then
+                workspace.WalkWater_Part:Destroy()
+            end
+        end
+    end
+})
+
+Tabs.Misc:AddToggle("FullBright", {
+    Title = "Turn on Full Bright",
+    Default = false,
+    Callback = function(v)
+        SetFlag("FullBright", v)
+        if v then
+            Lighting.Brightness = 2
+            Lighting.ClockTime = 14
+            Lighting.FogEnd = 100000
+            Lighting.GlobalShadows = false
+            Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+        end
+    end
+})
+
+Tabs.Misc:AddToggle("LowCPU", {
+    Title = "Turn on Low CPU",
+    Default = false,
+    Callback = function(v)
+        SetFlag("LowCPU", v)
+        if v then
+            settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        end
+    end
+})
+
+Tabs.Misc:AddToggle("NoClip", {
+    Title = "Body Clip / NoClip",
+    Default = false,
+    Callback = function(v)
+        SetFlag("NoClip", v)
+        if v then
+            Connect("NoClip", RunService.Stepped, function()
+                if Character then
+                    for _, part in ipairs(Character:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        else
+            Disconnect("NoClip")
+        end
+    end
+})
+
+Tabs.Misc:AddToggle("InfAbility", {
+    Title = "Infinite Abilities",
+    Default = false,
+    Callback = function(v) SetFlag("InfAbility", v) end
+})
+
+Tabs.Misc:AddToggle("SafeMode", {
+    Title = "Safe Mode (low health protection)",
+    Default = false,
+    Callback = function(v) SetFlag("SafeMode", v) end
+})
+
+Tabs.Misc:AddButton({
+    Title = "Server Hop (Lowest Players)",
+    Callback = function()
+        Notify("Server Hop", "Looking for low player server...")
+        pcall(function()
+            local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+            for _, s in ipairs(servers.data or {}) do
+                if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer)
+                    break
+                end
+            end
+        end)
+    end
+})
+
+Tabs.Misc:AddButton({
+    Title = "Rejoin Server",
+    Callback = function()
+        TeleportService:Teleport(game.PlaceId, LocalPlayer)
+    end
+})
+
+Tabs.Misc:AddButton({
+    Title = "Copy Job ID",
+    Callback = function()
+        setclipboard(tostring(game.JobId))
+        Notify("Job ID", "Copied to clipboard")
+    end
+})
+
+Tabs.Misc:AddToggle("DisableNotify", {
+    Title = "Disable Notify",
+    Default = false,
+    Callback = function(v) SetFlag("DisableNotify", v) end
+})
+
+Tabs.Misc:AddToggle("DisableChat", {
+    Title = "Disable Chat GUI",
+    Default = false,
+    Callback = function(v)
+        pcall(function()
+            StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, not v)
+        end)
+    end
+})
+
+Tabs.Misc:AddSlider("WalkSpeed", {
+    Title = "Walk Speed",
+    Default = 16,
+    Min = 16,
+    Max = 200,
+    Rounding = 0,
+    Callback = function(v)
+        if Humanoid then Humanoid.WalkSpeed = v end
+    end
+})
+
+Tabs.Misc:AddSlider("JumpPower", {
+    Title = "Jump Power",
+    Default = 50,
+    Min = 50,
+    Max = 200,
+    Rounding = 0,
+    Callback = function(v)
+        if Humanoid then Humanoid.JumpPower = v end
+    end
+})
+
+ 
 local function SetParagraph(para, text)
     if not para then return end
     pcall(function()
@@ -2607,1647 +4249,6 @@ print("[BFHub] Feature runners loaded")
 print("[BFHub] Core combat ready — bật Auto Farm Level khi muốn farm")
 
 
--- AUTO FARM
--------------------------------------------------
-
-
-pcall(function() Tabs.Main:AddSection("Status") end)
-local StatusPara = nil
-pcall(function()
-    StatusPara = Tabs.Main:AddParagraph({
-        Title = "Farm Status",
-        Content = "Level: - | Quest: - | Mob: -"
-    })
-end)
--- guarantee at least one visible control on Main
-pcall(function()
-    Tabs.Main:AddToggle("HubReady", {
-        Title = "Hub Loaded (ignore)",
-        Default = true,
-        Callback = function() end
-    })
-end)
-pcall(function()
-    Tabs.Farm:AddToggle("UITestFarm", {
-        Title = "UI Test - if you see this, toggles work",
-        Default = false,
-        Callback = function(v) Notify("UI", v and "ok" or "off") end
-    })
-end)
-task.spawn(function()
-    while true do
-        task.wait(1)
-        pcall(function()
-            local lv = "?"
-            pcall(function() lv = tostring(LocalPlayer.Data.Level.Value) end)
-            local q = QuestName or CurrentQuest and CurrentQuest.NameQuest or "-"
-            local m = Name or CurrentQuest and CurrentQuest.Mon or "-"
-            SetParagraph(StatusPara, string.format("Level: %s | Quest: %s | Mob: %s", lv, tostring(q), tostring(m)))
-        end)
-    end
-end)
-
-pcall(function() Tabs.Farm:AddSection("Auto Farm") end)
-
-Tabs.Farm:AddToggle("AutoFarmLevel", {
-    Title = "Auto Farm Level (Quest + Bring)",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoFarmLevel", v)
-        if v then
-            Notify("Farm", "Quest farm started — accept + bring mobs")
-            task.spawn(function()
-                while GetFlag("AutoFarmLevel") do
-                    pcall(DoQuestFarmStep)
-                    task.wait(GetFlag("FastFarm") and 0.06 or 0.1)
-                end
-            end)
-        end
-    end
-})
-
-Tabs.Farm:AddToggle("AutoFarmNearest", {
-    Title = "Auto Farm Nearest",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoFarmNearest", v)
-        if v then
-            task.spawn(function()
-                while GetFlag("AutoFarmNearest") do
-                    local mob = GetNearestEnemy(GetFlag("MobAuraDistance") or 800)
-                    if mob and mob:FindFirstChild("HumanoidRootPart") then
-                        local hrp = mob.HumanoidRootPart
-                        if (HumanoidRootPart.Position - hrp.Position).Magnitude > 25 then
-                            TweenTo(hrp.CFrame * CFrame.new(0, 8, 3), GetFlag("FastFarm") and 500 or 420)
-                        else
-                            pcall(function() HumanoidRootPart.CFrame = hrp.CFrame * CFrame.new(0, 8, 0) end)
-                        end
-                        if GetFlag("BringEnemy") then
-                            StartMagnet = true
-                            PosMon = hrp.CFrame
-                            BringEnemy(mob)
-                        end
-                        AttackNearest()
-                        AttackNoCD(1)
-                    end
-                    task.wait(GetFlag("FastFarm") and 0.04 or 0.06)
-                end
-            end)
-        end
-    end
-})
-
-Tabs.Farm:AddToggle("AutoFarmChest", {
-    Title = "Auto Collect Chest",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoFarmChest", v)
-        if v then
-            task.spawn(function()
-                while GetFlag("AutoFarmChest") do
-                    for _, obj in ipairs(workspace:GetDescendants()) do
-                        if (obj:IsA("Model") or obj:IsA("BasePart")) and obj.Name:lower():find("chest") then
-                            local pos = obj:IsA("Model") and (obj.PrimaryPart and obj.PrimaryPart.Position or obj:GetPivot().Position) or obj.Position
-                            if (HumanoidRootPart.Position - pos).Magnitude < 3000 then
-                                TweenTo(CFrame.new(pos + Vector3.new(0, 3, 0)), 400)
-                                task.wait(0.3)
-                            end
-                        end
-                    end
-                    task.wait(1)
-                end
-            end)
-        end
-    end
-})
-
-Tabs.Farm:AddToggle("AutoBones", {
-    Title = "Auto Bones",
-    Default = false,
-    Callback = function(v) SetFlag("AutoBones", v) end
-})
-
-Tabs.Farm:AddToggle("AutoFarmEctoplasm", {
-    Title = "Auto Farm Ectoplasm",
-    Default = false,
-    Callback = function(v) SetFlag("AutoFarmEctoplasm", v) end
-})
-
-Tabs.Farm:AddToggle("AutoFarmObservation", {
-    Title = "Auto Farm Observation",
-    Default = false,
-    Callback = function(v) SetFlag("AutoFarmObservation", v) end
-})
-
-Tabs.Farm:AddToggle("AutoFarmRaid", {
-    Title = "Auto Farm Raid",
-    Default = false,
-    Callback = function(v) SetFlag("AutoFarmRaid", v) end
-})
-
-Tabs.Farm:AddToggle("SkillSpam", {
-    Title = "Skill Spam (Z/X/C/V)",
-    Default = true,
-    Callback = function(v) SetFlag("SkillSpam", v) end
-})
-Tabs.Farm:AddToggle("FastFarm", {
-    Title = "Fast Farm (speed boost)",
-    Default = true,
-    Callback = function(v) SetFlag("FastFarm", v) end
-})
-Tabs.Farm:AddToggle("BypassTP", {
-    Title = "Bypass TP (long distance)",
-    Default = false,
-    Callback = function(v) SetFlag("BypassTP", v) end
-})
-Tabs.Farm:AddSlider("TweenSpeed", {
-    Title = "Tween Speed",
-    Default = 350,
-    Min = 150,
-    Max = 600,
-    Rounding = 0,
-    Callback = function(v) SetFlag("TweenSpeed", v) end
-})
-Tabs.Farm:AddSlider("DistanceAutoFarm", {
-    Title = "Farm Height Distance",
-    Default = 15,
-    Min = 5,
-    Max = 40,
-    Rounding = 0,
-    Callback = function(v) SetFlag("DistanceAutoFarm", v) end
-})
-Tabs.Farm:AddToggle("BringEnemy", {
-    Title = "Bring Enemy",
-    Default = true,
-    Callback = function(v) SetFlag("BringEnemy", v) end
-})
-
-Tabs.Farm:AddToggle("MobAura", {
-    Title = "Mob Aura",
-    Default = false,
-    Callback = function(v) SetFlag("MobAura", v) end
-})
-
-Tabs.Farm:AddSlider("MobAuraDistance", {
-    Title = "Distance Mob Aura",
-    Default = 1000,
-    Min = 50,
-    Max = 2000,
-    Rounding = 0,
-    Callback = function(v) SetFlag("MobAuraDistance", v) end
-})
-
-Tabs.Bosses:AddToggle("AutoAllBoss", {
-    Title = "Auto All Boss",
-    Default = false,
-    Callback = function(v) SetFlag("AutoAllBoss", v) end
-})
-
-Tabs.Farm:AddToggle("DoubleAttack", {
-    Title = "Double Attack (Fruit + Melee M1)",
-    Default = false,
-    Callback = function(v)
-        SetFlag("DoubleAttack", v)
-        if v then
-            task.spawn(function()
-                while GetFlag("DoubleAttack") do
-                    -- alternate fruit M1 and melee
-                    VirtualUser:ClickButton1(Vector2.new())
-                    task.wait(0.12)
-                end
-            end)
-        end
-    end
-})
-
-Tabs.Farm:AddToggle("AutoFarmMaterial", {
-    Title = "Auto Farm Material + Volcanic Magnet",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoFarmMaterial", v)
-        if v then
-            Notify("Material Farm", "Farming materials & crafting Volcanic Magnet")
-        end
-    end
-})
-
--------------------------------------------------
--- MASTERY
--------------------------------------------------
-Tabs.Mastery:AddToggle("AutoMasterySword", {
-    Title = "Auto Mastery All Sword",
-    Default = false,
-    Callback = function(v) SetFlag("AutoMasterySword", v) end
-})
-
-Tabs.Mastery:AddToggle("AutoMasteryFruit", {
-    Title = "Auto Mastery Fruits",
-    Default = false,
-    Callback = function(v) SetFlag("AutoMasteryFruit", v) end
-})
-
-Tabs.Mastery:AddToggle("AutoMasteryGun", {
-    Title = "Auto Mastery Gun",
-    Default = false,
-    Callback = function(v) SetFlag("AutoMasteryGun", v) end
-})
-
-Tabs.Mastery:AddToggle("NPCAimbotMastery", {
-    Title = "NPC Aimbot (Mastery)",
-    Default = false,
-    Callback = function(v) SetFlag("NPCAimbotMastery", v) end
-})
-
-Tabs.Mastery:AddSlider("MasteryLock", {
-    Title = "Sword Mastery Level Lock",
-    Default = 600,
-    Min = 0,
-    Max = 600,
-    Rounding = 0,
-    Callback = function(v) SetFlag("MasteryLock", v) end
-})
-
--------------------------------------------------
--- BOSSES
--------------------------------------------------
-local BossList = {
-    "Cake Prince", "Dough King", "Darkbeard", "Soul Reaper", "Rip_Indra",
-    "Ice Admiral", "Awakened Ice Admiral", "Magma Admiral", "Smoke Admiral",
-    "Thunder God", "Tide Keeper", "Cursed Captain", "Don Swan", "Diamond",
-    "Jeremy", "Fajita", "Captain Elephant", "Beautiful Pirate", "Longma",
-    "Stone", "Island Empress", "Kilo Admiral", "Warden", "Chief Warden",
-    "Swan", "Greybeard", "The Gorilla King", "Bobby", "Yeti", "Saber Expert",
-    "Forest Pirate", "Cake Queen", "Head Baker", "Baking Staff", "Cookie Crafter",
-    "Cake Guard", "Chocolate Bar Battler", "Sweet Thief", "Candy Rebel",
-    "Peanut Scout", "Ice Cream Chef", "Ice Cream Commander", "Cocoa Warrior",
-    "Living Zombie", "Reborn Skeleton", "Demonic Soul", "Posessed Mummy",
-    "Ghost", "Mythological Pirate", "Fishman Lord", "Fishman Captain",
-    "Arctic Warrior", "Snow Lurker", "Elite Hunter", "Hydra Leader",
-    "Dragon Crew Warrior", "Dragon Crew Archer", "Venomous Assailant",
-    "Marine Captain", "Marine Rear Admiral", "Vice Admiral", "Mob Leader",
-    "Galley Captain", "Pirate Millionaire", "Pistol Billionaire", "The Saw",
-    "The Sentinel", "Heaven's Guardian", "Hell's Messenger", "Order"
-}
-
-Tabs.Bosses:AddDropdown("SelectedBoss", {
-    Title = "Select Boss",
-    Values = BossList,
-    Multi = false,
-    Default = 1,
-    Callback = function(v) SetFlag("SelectedBoss", v) end
-})
-
-Tabs.Bosses:AddToggle("AutoKillBoss", {
-    Title = "Auto Kill Selected Boss",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoKillBoss", v)
-        if v then
-            task.spawn(function()
-                while GetFlag("AutoKillBoss") do
-                    local targetName = GetFlag("SelectedBoss")
-                    local enemies = workspace:FindFirstChild("Enemies")
-                    if enemies then
-                        local boss = enemies:FindFirstChild(targetName)
-                        if boss and boss:FindFirstChild("HumanoidRootPart") and boss.Humanoid.Health > 0 then
-                            TweenTo(boss.HumanoidRootPart.CFrame * CFrame.new(0, 15, 0), 350)
-                            if GetFlag("BringEnemy") then BringEnemy(boss) end
-                            AttackNearest()
-                        end
-                    end
-                    task.wait(0.2)
-                end
-            end)
-        end
-    end
-})
-
-Tabs.Bosses:AddToggle("AutoCakePrince", {
-    Title = "Auto Cake Prince",
-    Default = false,
-    Callback = function(v) SetFlag("AutoCakePrince", v) end
-})
-
-Tabs.Bosses:AddToggle("AutoDarkbeard", {
-    Title = "Auto Darkbeard",
-    Default = false,
-    Callback = function(v) SetFlag("AutoDarkbeard", v) end
-})
-
-Tabs.Bosses:AddToggle("AutoSoulReaper", {
-    Title = "Auto Soul Reaper [Fully]",
-    Default = false,
-    Callback = function(v) SetFlag("AutoSoulReaper", v) end
-})
-
-Tabs.Bosses:AddToggle("AutoDonSwan", {
-    Title = "Auto Unlocked DonSwan",
-    Default = false,
-    Callback = function(v) SetFlag("AutoDonSwan", v) end
-})
-
-Tabs.Bosses:AddToggle("BossNotify", {
-    Title = "Boss Spawn Notification",
-    Default = true,
-    Callback = function(v)
-        SetFlag("BossNotify", v)
-        if v then
-            Connect("BossSpawn", workspace.ChildAdded, function(child)
-                if table.find(BossList, child.Name) then
-                    Notify("Boss Spawned!", child.Name .. " is in the server!", 6)
-                end
-            end)
-        else
-            Disconnect("BossSpawn")
-        end
-    end
-})
-
-Tabs.Bosses:AddToggle("EliteHunter", {
-    Title = "Elite Hunter Status",
-    Default = false,
-    Callback = function(v) SetFlag("EliteHunter", v) end
-})
-
--------------------------------------------------
--- RAIDS / DUNGEONS
--------------------------------------------------
-Tabs.Raids:AddToggle("AutoStartRaid", {
-    Title = "Auto Start Raid",
-    Default = false,
-    Callback = function(v) SetFlag("AutoStartRaid", v) end
-})
-
-Tabs.Raids:AddToggle("AutoCompleteRaid", {
-    Title = "Auto Complete Raid [Safety]",
-    Default = false,
-    Callback = function(v) SetFlag("AutoCompleteRaid", v) end
-})
-
-Tabs.Raids:AddToggle("AutoFactoryRaid", {
-    Title = "Auto Factory Raid",
-    Default = false,
-    Callback = function(v) SetFlag("AutoFactoryRaid", v) end
-})
-
-Tabs.Raids:AddToggle("AutoPirateRaid", {
-    Title = "Auto Pirate Raid",
-    Default = false,
-    Callback = function(v) SetFlag("AutoPirateRaid", v) end
-})
-
-Tabs.Raids:AddToggle("AutoSelectChip", {
-    Title = "Auto Select Dungeon Chip",
-    Default = false,
-    Callback = function(v) SetFlag("AutoSelectChip", v) end
-})
-
-Tabs.Raids:AddToggle("BuyChipBeli", {
-    Title = "Buy Dungeon Chips [Beli]",
-    Default = false,
-    Callback = function(v) SetFlag("BuyChipBeli", v) end
-})
-
-Tabs.Raids:AddToggle("BuyChipFruit", {
-    Title = "Buy Dungeon Chips [Devil Fruit]",
-    Default = false,
-    Callback = function(v) SetFlag("BuyChipFruit", v) end
-})
-
-Tabs.Raids:AddToggle("AutoUnlockDough", {
-    Title = "Auto Unlock Dough Dungeon",
-    Default = false,
-    Callback = function(v) SetFlag("AutoUnlockDough", v) end
-})
-
-Tabs.Raids:AddToggle("AutoUnlockPhoenix", {
-    Title = "Auto Unlock Phoenix Dungeon",
-    Default = false,
-    Callback = function(v) SetFlag("AutoUnlockPhoenix", v) end
-})
-
-Tabs.Raids:AddToggle("StartLawRaid", {
-    Title = "Start Law Raids",
-    Default = false,
-    Callback = function(v) SetFlag("StartLawRaid", v) end
-})
-
--------------------------------------------------
--- QUESTS / TRIALS / CDK
--------------------------------------------------
-Tabs.Quests:AddToggle("AutoAcceptQuest", {
-    Title = "Accept Quests (by level)",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoAcceptQuest", v)
-        if v then
-            task.spawn(function()
-                while GetFlag("AutoAcceptQuest") do
-                    CheckQuest()
-                    if CurrentQuest.NameQuest and not HasActiveQuest() then
-                        if CurrentQuest.CFrameQuest then
-                            TweenTo(CurrentQuest.CFrameQuest, 350)
-                        end
-                        StartQuestRemote(CurrentQuest.NameQuest, CurrentQuest.LevelQuest)
-                    end
-                    task.wait(1.2)
-                end
-            end)
-        end
-    end
-})
-
-Tabs.Quests:AddToggle("AutoBartilo", {
-    Title = "Auto Done Bartilo Quest",
-    Default = false,
-    Callback = function(v) SetFlag("AutoBartilo", v) end
-})
-
-Tabs.Quests:AddToggle("AutoCitizen", {
-    Title = "Auto Done Citizen Quest",
-    Default = false,
-    Callback = function(v) SetFlag("AutoCitizen", v) end
-})
-
-Tabs.Quests:AddToggle("AutoEliteQuest", {
-    Title = "Auto Elite Quest",
-    Default = false,
-    Callback = function(v) SetFlag("AutoEliteQuest", v) end
-})
-
-Tabs.Quests:AddToggle("AutoCDK", {
-    Title = "Auto Get CDK [Last Quest]",
-    Default = false,
-    Callback = function(v) SetFlag("AutoCDK", v) end
-})
-
-Tabs.Quests:AddToggle("AutoTushita", {
-    Title = "Auto Tushita CDK / Sword",
-    Default = false,
-    Callback = function(v) SetFlag("AutoTushita", v) end
-})
-
-Tabs.Quests:AddToggle("AutoYama", {
-    Title = "Auto Yama CDK / Sword",
-    Default = false,
-    Callback = function(v) SetFlag("AutoYama", v) end
-})
-
-Tabs.Quests:AddToggle("AutoZou", {
-    Title = "Auto Zou Quest",
-    Default = false,
-    Callback = function(v) SetFlag("AutoZou", v) end
-})
-
-Tabs.Quests:AddToggle("AutoDragoV1", {
-    Title = "Auto Drago (V1)",
-    Default = false,
-    Callback = function(v) SetFlag("AutoDragoV1", v) end
-})
-
-Tabs.Quests:AddToggle("AutoDragoV2", {
-    Title = "Auto Drago (V2)",
-    Default = false,
-    Callback = function(v) SetFlag("AutoDragoV2", v) end
-})
-
-Tabs.Quests:AddToggle("AutoDragoV3", {
-    Title = "Auto Drago (V3)",
-    Default = false,
-    Callback = function(v) SetFlag("AutoDragoV3", v) end
-})
-
-Tabs.Quests:AddToggle("AutoTrainDragoV4", {
-    Title = "Auto Train Drago v4",
-    Default = false,
-    Callback = function(v) SetFlag("AutoTrainDragoV4", v) end
-})
-
-Tabs.Quests:AddToggle("AutoDragonTalon", {
-    Title = "Auto DragonTalon",
-    Default = false,
-    Callback = function(v) SetFlag("AutoDragonTalon", v) end
-})
-
-Tabs.Quests:AddToggle("AutoDragonHunter", {
-    Title = "Auto Dragon Hunter",
-    Default = false,
-    Callback = function(v) SetFlag("AutoDragonHunter", v) end
-})
-
-Tabs.Quests:AddToggle("AutoCollectDragonEggs", {
-    Title = "Auto Collect Dragon Eggs",
-    Default = false,
-    Callback = function(v) SetFlag("AutoCollectDragonEggs", v) end
-})
-
-Tabs.Quests:AddToggle("AutoCompleteTrial", {
-    Title = "Auto Complete Trial Race",
-    Default = false,
-    Callback = function(v) SetFlag("AutoCompleteTrial", v) end
-})
-
-Tabs.Quests:AddToggle("AutoRainbowHaki", {
-    Title = "Auto Rainbow Colors / Haki",
-    Default = false,
-    Callback = function(v) SetFlag("AutoRainbowHaki", v) end
-})
-
-Tabs.Quests:AddToggle("AutoDojo", {
-    Title = "Auto Dojo Trainer / Belt",
-    Default = false,
-    Callback = function(v) SetFlag("AutoDojo", v) end
-})
-
-Tabs.Quests:AddToggle("KillAfterTrial", {
-    Title = "Auto Kill Player After Trial",
-    Default = false,
-    Callback = function(v) SetFlag("KillAfterTrial", v) end
-})
-
--------------------------------------------------
--- SEA EVENTS
--------------------------------------------------
-Tabs.Sea:AddToggle("AutoFindMirage", {
-    Title = "Auto Find Mirage Island",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoFindMirage", v)
-        if v then Notify("Mirage", "Searching for Mirage Island...") end
-    end
-})
-
-Tabs.Sea:AddToggle("AutoFindKitsune", {
-    Title = "Auto Find Kitsune Island",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoFindKitsune", v)
-        if v then Notify("Kitsune", "Searching for Kitsune Island...") end
-    end
-})
-
-Tabs.Sea:AddToggle("AutoFindPrehistoric", {
-    Title = "Auto Find Prehistoric Island",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoFindPrehistoric", v)
-        if v then Notify("Prehistoric", "Searching for Prehistoric Island...") end
-    end
-})
-
-Tabs.Sea:AddToggle("AutoLeviathan", {
-    Title = "Auto Attack Leviathan",
-    Default = false,
-    Callback = function(v) SetFlag("AutoLeviathan", v) end
-})
-
-Tabs.Sea:AddToggle("AutoSeaBeast", {
-    Title = "Auto Attack Sea Beast",
-    Default = false,
-    Callback = function(v) SetFlag("AutoSeaBeast", v) end
-})
-
-Tabs.Sea:AddToggle("AutoTerrorShark", {
-    Title = "Auto Terror Shark",
-    Default = false,
-    Callback = function(v) SetFlag("AutoTerrorShark", v) end
-})
-
-Tabs.Sea:AddToggle("AutoShark", {
-    Title = "Auto Shark",
-    Default = false,
-    Callback = function(v) SetFlag("AutoShark", v) end
-})
-
-Tabs.Sea:AddToggle("AutoPiranha", {
-    Title = "Auto Piranha",
-    Default = false,
-    Callback = function(v) SetFlag("AutoPiranha", v) end
-})
-
-Tabs.Sea:AddToggle("AutoPirateGrandBrigade", {
-    Title = "Auto Attack Pirate Grand Brigade",
-    Default = false,
-    Callback = function(v) SetFlag("AutoPirateGrandBrigade", v) end
-})
-
-Tabs.Sea:AddToggle("AutoCollectMirageChest", {
-    Title = "Auto Collect Mirage Chest",
-    Default = false,
-    Callback = function(v) SetFlag("AutoCollectMirageChest", v) end
-})
-
-Tabs.Sea:AddToggle("IslandNotify", {
-    Title = "Notify Mirage / Kitsune / Prehistoric Spawn",
-    Default = true,
-    Callback = function(v) SetFlag("IslandNotify", v) end
-})
-
-Tabs.Sea:AddToggle("OpenLeviathanGate", {
-    Title = "Open Leviathan Gate / Frozen Dimension",
-    Default = false,
-    Callback = function(v) SetFlag("OpenLeviathanGate", v) end
-})
-
-Tabs.Sea:AddToggle("CraftLeviathan", {
-    Title = "Craft Leviathan Boat / Crown / Shield",
-    Default = false,
-    Callback = function(v) SetFlag("CraftLeviathan", v) end
-})
-
--------------------------------------------------
--- FRUITS
--------------------------------------------------
-Tabs.Fruits:AddToggle("AutoCollectFruit", {
-    Title = "Auto Collect Fruit",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoCollectFruit", v)
-        if v then
-            task.spawn(function()
-                while GetFlag("AutoCollectFruit") do
-                    for _, obj in ipairs(workspace:GetDescendants()) do
-                        if obj.Name:find("Fruit") and obj:IsA("Tool") or (obj:IsA("Model") and obj:FindFirstChild("Handle")) then
-                            local handle = obj:FindFirstChild("Handle") or obj
-                            if handle and handle:IsA("BasePart") then
-                                TweenTo(handle.CFrame, 450)
-                                task.wait(0.4)
-                            end
-                        end
-                    end
-                    task.wait(1.5)
-                end
-            end)
-        end
-    end
-})
-
-Tabs.Fruits:AddToggle("AutoStoreFruit", {
-    Title = "Auto Store Fruit",
-    Default = false,
-    Callback = function(v) SetFlag("AutoStoreFruit", v) end
-})
-
-Tabs.Fruits:AddToggle("AutoDropFruit", {
-    Title = "Auto Drop Fruit",
-    Default = false,
-    Callback = function(v) SetFlag("AutoDropFruit", v) end
-})
-
-Tabs.Fruits:AddToggle("AutoRandomFruit", {
-    Title = "Auto Random Fruit",
-    Default = false,
-    Callback = function(v) SetFlag("AutoRandomFruit", v) end
-})
-
-Tabs.Fruits:AddToggle("AutoTweenFruit", {
-    Title = "Auto Tween to Fruit",
-    Default = false,
-    Callback = function(v) SetFlag("AutoTweenFruit", v) end
-})
-
-Tabs.Fruits:AddToggle("AutoTweenDealer", {
-    Title = "Auto Tween Advanced Fruit Dealer",
-    Default = false,
-    Callback = function(v) SetFlag("AutoTweenDealer", v) end
-})
-
-Tabs.Fruits:AddToggle("FruitESP", {
-    Title = "Fruit ESP",
-    Default = false,
-    Callback = function(v) SetFlag("FruitESP", v) end
-})
-
-Tabs.Fruits:AddToggle("GodChalice", {
-    Title = "Auto Farm God's Chalice / Stop when got",
-    Default = false,
-    Callback = function(v) SetFlag("GodChalice", v) end
-})
-
-Tabs.Fruits:AddToggle("IceWalk", {
-    Title = "Ice Walk",
-    Default = false,
-    Callback = function(v) SetFlag("IceWalk", v) end
-})
-
--------------------------------------------------
--- SWORDS / WEAPONS
--------------------------------------------------
-local SwordList = {
-    "Saber", "Yama", "Tushita", "Cursed Dual Katana", "True Triple Katana",
-    "Rengoku", "Midnight Blade", "Dark Blade", "Bisento", "Pole",
-    "Shark Anchor", "Soul Cane", "Hallow Scythe", "Dragon Trident",
-    "Twin Hooks", "Canvander", "Buddy Sword", "Warden Sword", "Longsword",
-    "Katana", "Cutlass", "Dual Katana", "Triple Katana", "Iron Mace",
-    "Pipe", "Flintlock", "Refined Flintlock", "Musket", "Kabucha",
-    "Serpent Bow", "Skull Guitar", "Valkyrie Helm"
-}
-
-Tabs.Swords:AddDropdown("SelectSword", {
-    Title = "Select Weapon",
-    Values = SwordList,
-    Multi = false,
-    Default = 1,
-    Callback = function(v)
-        SetFlag("SelectSword", v)
-        EquipTool(v)
-    end
-})
-
-Tabs.Swords:AddToggle("AutoEquipSword", {
-    Title = "Auto Equip Selected Sword",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoEquipSword", v)
-        if v then
-            task.spawn(function()
-                while GetFlag("AutoEquipSword") do
-                    local name = GetFlag("SelectSword")
-                    if name then EquipTool(name) end
-                    task.wait(1)
-                end
-            end)
-        end
-    end
-})
-
-Tabs.Swords:AddToggle("AutoSaber", {
-    Title = "Auto Saber Sword",
-    Default = false,
-    Callback = function(v) SetFlag("AutoSaber", v) end
-})
-
-Tabs.Swords:AddToggle("AutoRengoku", {
-    Title = "Auto Rengoku Sword",
-    Default = false,
-    Callback = function(v) SetFlag("AutoRengoku", v) end
-})
-
-Tabs.Swords:AddToggle("AutoPole", {
-    Title = "Auto Pole V1 / V2",
-    Default = false,
-    Callback = function(v) SetFlag("AutoPole", v) end
-})
-
-Tabs.Swords:AddToggle("AutoCDKSword", {
-    Title = "Auto CDK / Tushita / Yama",
-    Default = false,
-    Callback = function(v) SetFlag("AutoCDKSword", v) end
-})
-
-Tabs.Swords:AddToggle("AutoSkullGuitar", {
-    Title = "Auto Skull Guitar",
-    Default = false,
-    Callback = function(v) SetFlag("AutoSkullGuitar", v) end
-})
-
-Tabs.Swords:AddToggle("AutoLegendarySword", {
-    Title = "Tween to Legendary Sword Dealer",
-    Default = false,
-    Callback = function(v) SetFlag("AutoLegendarySword", v) end
-})
-
-Tabs.Swords:AddToggle("AutoGun", {
-    Title = "Auto Gun",
-    Default = false,
-    Callback = function(v) SetFlag("AutoGun", v) end
-})
-
-Tabs.Swords:AddToggle("AutoMelee", {
-    Title = "Auto Melee",
-    Default = false,
-    Callback = function(v) SetFlag("AutoMelee", v) end
-})
-
--------------------------------------------------
--- RACE / HAKI / STYLES
--------------------------------------------------
-Tabs.Race:AddToggle("AutoBuso", {
-    Title = "Auto Turn on Buso",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoBuso", v)
-        if v then
-            task.spawn(function()
-                while GetFlag("AutoBuso") do
-                    FireComm("Buso")
-                    task.wait(1)
-                end
-            end)
-        end
-    end
-})
-
-Tabs.Race:AddToggle("AutoKen", {
-    Title = "Auto Observation / Ken",
-    Default = false,
-    Callback = function(v) SetFlag("AutoKen", v) end
-})
-
-Tabs.Race:AddToggle("AutoRaceV3", {
-    Title = "Auto Turn on Race V3",
-    Default = false,
-    Callback = function(v) SetFlag("AutoRaceV3", v) end
-})
-
-Tabs.Race:AddToggle("AutoRaceV4", {
-    Title = "Auto Turn on Race V4",
-    Default = false,
-    Callback = function(v) SetFlag("AutoRaceV4", v) end
-})
-
-Tabs.Race:AddToggle("AutoTrainV4", {
-    Title = "Auto Train V4",
-    Default = false,
-    Callback = function(v) SetFlag("AutoTrainV4", v) end
-})
-
-Tabs.Race:AddToggle("AutoSuperhuman", {
-    Title = "Auto Superhuman",
-    Default = false,
-    Callback = function(v) SetFlag("AutoSuperhuman", v) end
-})
-
-Tabs.Race:AddToggle("AutoGodhuman", {
-    Title = "Auto Godhuman",
-    Default = false,
-    Callback = function(v) SetFlag("AutoGodhuman", v) end
-})
-
-Tabs.Race:AddToggle("AutoSanguine", {
-    Title = "Auto Sanguine Art",
-    Default = false,
-    Callback = function(v) SetFlag("AutoSanguine", v) end
-})
-
-Tabs.Race:AddToggle("AutoSharkman", {
-    Title = "Auto Sharkman Karate",
-    Default = false,
-    Callback = function(v) SetFlag("AutoSharkman", v) end
-})
-
-Tabs.Race:AddToggle("AutoDeathStep", {
-    Title = "Auto Death Step",
-    Default = false,
-    Callback = function(v) SetFlag("AutoDeathStep", v) end
-})
-
-Tabs.Race:AddToggle("AutoElectricClaw", {
-    Title = "Auto Electric Claw",
-    Default = false,
-    Callback = function(v) SetFlag("AutoElectricClaw", v) end
-})
-
-Tabs.Race:AddToggle("AutoDragonClaw", {
-    Title = "Auto Dragon Claw / Talon",
-    Default = false,
-    Callback = function(v) SetFlag("AutoDragonClaw", v) end
-})
-
-Tabs.Race:AddToggle("InfSoru", {
-    Title = "Instance Soru [INF]",
-    Default = false,
-    Callback = function(v) SetFlag("InfSoru", v) end
-})
-
-Tabs.Race:AddToggle("InfObservation", {
-    Title = "Instance Observation Range [INF]",
-    Default = false,
-    Callback = function(v) SetFlag("InfObservation", v) end
-})
-
-Tabs.Race:AddToggle("InfEnergy", {
-    Title = "Instance Energy [INF]",
-    Default = false,
-    Callback = function(v) SetFlag("InfEnergy", v) end
-})
-
-Tabs.Race:AddToggle("AutoAwaken", {
-    Title = "Auto Awakening",
-    Default = false,
-    Callback = function(v) SetFlag("AutoAwaken", v) end
-})
-
-Tabs.Race:AddToggle("AutoBuyBusoColor", {
-    Title = "Auto Buy Buso Color",
-    Default = false,
-    Callback = function(v) SetFlag("AutoBuyBusoColor", v) end
-})
-
--------------------------------------------------
--- TELEPORT (real CFrames checked & filled)
--------------------------------------------------
-local IslandCFrames = {
-    -- Sea 1
-    ["Pirate Starter"] = CFrame.new(979.799, 16.516, 1429.047),
-    ["Marine Starter"] = CFrame.new(-2566.43, 6.856, 2045.256),
-    ["Middle Town"] = CFrame.new(-690.331, 15.094, 1582.238),
-    ["Jungle"] = CFrame.new(-1612.796, 36.852, 149.128),
-    ["Pirate Village"] = CFrame.new(-1181.309, 4.751, 3803.546),
-    ["Desert"] = CFrame.new(944.158, 20.92, 4373.3),
-    ["Frozen Village"] = CFrame.new(1347.807, 104.668, -1319.737),
-    ["Marine Fortress"] = CFrame.new(-4914.821, 50.964, 4281.028),
-    ["Magma Village"] = CFrame.new(-5247.716, 12.884, 8504.969),
-    ["Fountain City"] = CFrame.new(5127.128, 59.501, 4105.446),
-    ["Skylands"] = CFrame.new(-483.734, 332.038, 595.327),
-    ["Prison"] = CFrame.new(4875.33, 5.652, 734.85),
-    ["Colosseum"] = CFrame.new(-11.311, 29.277, 2771.522),
-    ["Underwater City"] = CFrame.new(-2850.201, 7.392, 5354.993),
-    ["Shank Room"] = CFrame.new(-1442.166, 29.879, -28.355),
-    ["Mob Island"] = CFrame.new(-2850.201, 7.392, 5354.993),
-
-    -- Sea 2
-    ["Kingdom of Rose"] = CFrame.new(-380.479, 77.22, 255.826), -- Cafe area / Rose hub
-    ["Cafe"] = CFrame.new(-380.479, 77.22, 255.826),
-    ["Green Zone"] = CFrame.new(-2245.0, 73.0, -2800.0), -- approximate from common hubs
-    ["Graveyard"] = CFrame.new(-9515.0, 142.0, 5786.0), -- near haunted-ish / adjust live
-    ["Snow Mountain"] = CFrame.new(753.143, 408.236, -5274.615),
-    ["Hot and Cold"] = CFrame.new(-6127.654, 15.952, -5040.286), -- Punk Hazard style
-    ["Cursed Ship"] = CFrame.new(923.0, 125.0, 32865.0), -- common cursed ship
-    ["Ice Castle"] = CFrame.new(5500.0, 40.0, -6200.0),
-    ["Forgotten Island"] = CFrame.new(-3050.0, 240.0, -10250.0),
-    ["Usoap Island"] = CFrame.new(4816.862, 8.46, 2863.82),
-    ["Dark Arena"] = CFrame.new(3780.03, 22.652, -3498.586),
-    ["Factory"] = CFrame.new(424.127, 211.162, -427.54),
-
-    -- Sea 3
-    ["Port Town"] = CFrame.new(-226.751, 20.603, 5538.34),
-    ["Hydra Island"] = CFrame.new(5291.249, 1005.443, 393.762),
-    ["Great Tree"] = CFrame.new(2681.274, 1682.809, -7190.985),
-    ["Floating Turtle"] = CFrame.new(-13274.528, 531.821, -7579.223),
-    ["Castle on the Sea"] = CFrame.new(-5083.26, 314.606, -3175.673),
-    ["Mansion"] = CFrame.new(-378.0, 331.0, 645.0), -- near castle / mansion access
-    ["Haunted Castle"] = CFrame.new(-9515.372, 164.006, 5786.061),
-    ["Ice Cream Island"] = CFrame.new(-902.568, 79.932, -10988.848),
-    ["Peanut Island"] = CFrame.new(-2062.748, 50.474, -10232.568),
-    ["Cake Island"] = CFrame.new(-1884.775, 19.328, -11666.897),
-    ["Cocoa Island"] = CFrame.new(87.943, 73.555, -12319.465),
-    ["Candy Island"] = CFrame.new(-1014.424, 149.111, -14555.963),
-    ["Tiki Outpost"] = CFrame.new(-16218.683, 9.086, 445.618),
-    ["Dragon Dojo"] = CFrame.new(5743.319, 1206.91, 936.011),
-    ["Mini Sky Island"] = CFrame.new(-288.741, 49326.316, -35248.594),
-
-    -- Special
-    ["Temple of Time"] = CFrame.new(28286.0, 14896.0, 102.0), -- common ToT
-    ["Frozen Dimension"] = CFrame.new(-5000.0, 300.0, -12000.0), -- leviathan approach (live adjust)
-}
-
-local IslandNames = {}
-for name in pairs(IslandCFrames) do
-    table.insert(IslandNames, name)
-end
-table.sort(IslandNames)
-
-local function RequestEntrance(pos)
-    pcall(function()
-        local rem = ReplicatedStorage:FindFirstChild("Remotes")
-        if rem and rem:FindFirstChild("CommF_") then
-            rem.CommF_:InvokeServer("requestEntrance", pos)
-        end
-    end)
-end
-
-local function TeleportToIsland(name)
-    local cf = IslandCFrames[name]
-    if not cf then
-        Notify("TP", "No CFrame for " .. tostring(name))
-        return
-    end
-    -- Prefer portal request when available (Castle / Mansion style)
-    if name == "Castle on the Sea" or name == "Mansion" then
-        RequestEntrance(Vector3.new(cf.X, cf.Y, cf.Z))
-        task.wait(0.4)
-    end
-    TweenTo(cf, 350)
-    Notify("TP", "Arrived: " .. name)
-end
-
-Tabs.TP:AddDropdown("SelectIsland", {
-    Title = "Choose Island",
-    Values = IslandNames,
-    Multi = false,
-    Default = 1,
-    Callback = function(v) SetFlag("SelectIsland", v) end
-})
-
-Tabs.TP:AddButton({
-    Title = "Teleport to Selected Island",
-    Callback = function()
-        local name = GetFlag("SelectIsland")
-        if name then
-            TeleportToIsland(name)
-        end
-    end
-})
-
-Tabs.TP:AddToggle("AutoNextIsland", {
-    Title = "Auto Next Island",
-    Default = false,
-    Callback = function(v) SetFlag("AutoNextIsland", v) end
-})
-
-Tabs.TP:AddToggle("BypassTP", {
-    Title = "Turn on Bypass Teleport",
-    Default = false,
-    Callback = function(v) SetFlag("BypassTP", v) end
-})
-
-Tabs.TP:AddButton({
-    Title = "Travel East Blue (World 1)",
-    Callback = function()
-        FireComm("TravelMain")
-    end
-})
-
-Tabs.TP:AddButton({
-    Title = "Travel Dressrosa (World 2)",
-    Callback = function()
-        FireComm("TravelDressrosa")
-    end
-})
-
-Tabs.TP:AddButton({
-    Title = "Travel Zou (World 3)",
-    Callback = function()
-        FireComm("TravelZou")
-    end
-})
-
-Tabs.TP:AddToggle("AutoTweenNPC", {
-    Title = "Auto Tween to NPCs",
-    Default = false,
-    Callback = function(v) SetFlag("AutoTweenNPC", v) end
-})
-
-Tabs.TP:AddToggle("UnlockPortals", {
-    Title = "Unlock All Portals",
-    Default = false,
-    Callback = function(v) SetFlag("UnlockPortals", v) end
-})
-
-Tabs.TP:AddButton({
-    Title = "Teleport to Temple of Time",
-    Callback = function()
-        TeleportToIsland("Temple of Time")
-    end
-})
-
-Tabs.TP:AddButton({
-    Title = "Teleport to Frozen Dimension",
-    Callback = function()
-        TeleportToIsland("Frozen Dimension")
-    end
-})
-
-Tabs.TP:AddButton({
-    Title = "Teleport to Castle on the Sea",
-    Callback = function()
-        TeleportToIsland("Castle on the Sea")
-    end
-})
-
-Tabs.TP:AddButton({
-    Title = "Teleport to Hydra Island",
-    Callback = function()
-        TeleportToIsland("Hydra Island")
-    end
-})
-
--------------------------------------------------
--- ESP
--------------------------------------------------
-local ESPFolder = Instance.new("Folder")
-ESPFolder.Name = "BFHubESP"
-ESPFolder.Parent = CoreGui
-
-
--- === PORTED from reference: ESP systems ===
-local function _DistM(pos)
-    if not HumanoidRootPart then return 0 end
-    return math.floor((HumanoidRootPart.Position - pos).Magnitude / 3 + 0.5)
-end
-
-local function ClearESPFolder()
-    for _, c in ipairs(ESPFolder:GetChildren()) do
-        c:Destroy()
-    end
-end
-
-local function EnsureBillboard(adornee, name, text, color)
-    if not adornee then return end
-    local existing = adornee:FindFirstChild(name)
-    if existing and existing:IsA("BillboardGui") then
-        local lab = existing:FindFirstChild("ESP")
-        if lab then lab.Text = text end
-        return
-    end
-    local bill = Instance.new("BillboardGui")
-    bill.Name = name
-    bill.Adornee = adornee
-    bill.Size = UDim2.new(0, 200, 0, 40)
-    bill.StudsOffset = Vector3.new(0, 2, 0)
-    bill.AlwaysOnTop = true
-    bill.Parent = ESPFolder
-    local label = Instance.new("TextLabel")
-    label.Name = "ESP"
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = color or Color3.fromRGB(0, 255, 250)
-    label.TextStrokeTransparency = 0.5
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 14
-    label.TextWrapped = true
-    label.Parent = bill
-end
-
-local function UpdatePlayerESP()
-    if not GetFlag("PlayerESP") then return end
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
-            local head = plr.Character.Head
-            local hum = plr.Character:FindFirstChild("Humanoid")
-            local hp = hum and (math.floor(hum.Health) .. "/" .. math.floor(hum.MaxHealth)) or "?"
-            local col = (plr.Team ~= LocalPlayer.Team) and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 255)
-            EnsureBillboard(head, "NameEsp" .. plr.Name, plr.Name .. " [" .. _DistM(head.Position) .. "M] HP " .. hp, col)
-        end
-    end
-end
-
-local function UpdateIslandESP()
-    if not GetFlag("IslandESP") then return end
-    local wo = workspace:FindFirstChild("_WorldOrigin")
-    local locs = wo and wo:FindFirstChild("Locations")
-    if not locs then return end
-    for _, loc in ipairs(locs:GetChildren()) do
-        if loc.Name ~= "Sea" and loc:IsA("BasePart") then
-            EnsureBillboard(loc, "NameEsp", loc.Name .. "\n" .. _DistM(loc.Position) .. " M", Color3.fromRGB(80, 245, 245))
-        end
-    end
-end
-
-local function UpdateChestESP()
-    if not GetFlag("ChestESP") then return end
-    for _, obj in ipairs(workspace:GetChildren()) do
-        if obj.Name:find("Chest") then
-            local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
-            if part then
-                EnsureBillboard(part, "NameEsp", obj.Name .. "\n" .. _DistM(part.Position) .. " M", Color3.fromRGB(0, 255, 250))
-            end
-        end
-    end
-end
-
-local function UpdateFruitESP()
-    if not (GetFlag("FruitESP") or GetFlag("FruitESP2")) then return end
-    for _, obj in ipairs(workspace:GetChildren()) do
-        if obj.Name:find("Fruit") then
-            local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
-            if handle then
-                EnsureBillboard(handle, "NameEsp", obj.Name .. "\n" .. _DistM(handle.Position) .. " M", Color3.fromRGB(255, 0, 0))
-            end
-        end
-    end
-end
-
-local function UpdateFlowerESP()
-    if not GetFlag("FlowerESP") then return end
-    for _, obj in ipairs(workspace:GetChildren()) do
-        if obj.Name == "Flower1" or obj.Name == "Flower2" then
-            local col = obj.Name == "Flower1" and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0)
-            local label = obj.Name == "Flower1" and "Blue Flower" or "Red Flower"
-            EnsureBillboard(obj, "NameEsp", label .. "\n" .. _DistM(obj.Position) .. " M", col)
-        end
-    end
-end
-
-task.spawn(function()
-    while true do
-        task.wait(1)
-        pcall(function()
-            if GetFlag("PlayerESP") then UpdatePlayerESP() end
-            if GetFlag("IslandESP") then UpdateIslandESP() end
-            if GetFlag("ChestESP") then UpdateChestESP() end
-            if GetFlag("FruitESP") or GetFlag("FruitESP2") then UpdateFruitESP() end
-            if GetFlag("FlowerESP") then UpdateFlowerESP() end
-        end)
-    end
-end)
-
-
-local function ClearESP()
-    ESPFolder:ClearAllChildren()
-end
-
-local function CreateESP(part, text, color)
-    if not part then return end
-    local bill = Instance.new("BillboardGui")
-    bill.Name = "ESP_" .. text
-    bill.Adornee = part
-    bill.Size = UDim2.new(0, 120, 0, 40)
-    bill.StudsOffset = Vector3.new(0, 3, 0)
-    bill.AlwaysOnTop = true
-    bill.Parent = ESPFolder
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = color or Color3.fromRGB(255, 255, 0)
-    label.TextStrokeTransparency = 0.3
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 14
-    label.Parent = bill
-end
-
-Tabs.ESP:AddToggle("PlayerESP", {
-    Title = "Esp Players",
-    Default = false,
-    Callback = function(v)
-        SetFlag("PlayerESP", v)
-        if not v then ClearESP() end
-    end
-})
-
-Tabs.ESP:AddToggle("ChestESP", {
-    Title = "Esp Chests",
-    Default = false,
-    Callback = function(v) SetFlag("ChestESP", v) end
-})
-
-Tabs.ESP:AddToggle("FruitESP2", {
-    Title = "Esp Fruits",
-    Default = false,
-    Callback = function(v) SetFlag("FruitESP2", v) end
-})
-
-Tabs.ESP:AddToggle("BerryESP", {
-    Title = "Esp Berries",
-    Default = false,
-    Callback = function(v) SetFlag("BerryESP", v) end
-})
-
-Tabs.ESP:AddToggle("IslandESP", {
-    Title = "Esp Island Location",
-    Default = false,
-    Callback = function(v) SetFlag("IslandESP", v) end
-})
-
-Tabs.ESP:AddToggle("BossESP", {
-    Title = "Esp Bosses / Elite",
-    Default = false,
-    Callback = function(v) SetFlag("BossESP", v) end
-})
-
-Tabs.ESP:AddToggle("FlowerESP", {
-    Title = "Esp Flower",
-    Default = false,
-    Callback = function(v) SetFlag("FlowerESP", v) end
-})
-
-Tabs.ESP:AddToggle("GearESP", {
-    Title = "Esp Gears",
-    Default = false,
-    Callback = function(v) SetFlag("GearESP", v) end
-})
-
-Tabs.ESP:AddToggle("RemoveVFX", {
-    Title = "Remove Death & Respawned VFX",
-    Default = false,
-    Callback = function(v) SetFlag("RemoveVFX", v) end
-})
-
--------------------------------------------------
--- COMBAT / AIMBOT
--------------------------------------------------
-Tabs.Combat:AddToggle("AimbotSkills", {
-    Title = "Aimbot - Skills",
-    Default = false,
-    Callback = function(v) SetFlag("AimbotSkills", v) end
-})
-
-Tabs.Combat:AddToggle("AimbotCamera", {
-    Title = "Aimbot Camera Closest Players",
-    Default = false,
-    Callback = function(v) SetFlag("AimbotCamera", v) end
-})
-
-Tabs.Combat:AddToggle("AutoAimbot", {
-    Title = "Auto Aimbots",
-    Default = false,
-    Callback = function(v) SetFlag("AutoAimbot", v) end
-})
-
-Tabs.Combat:AddToggle("AttackNoCD", {
-    Title = "Attack No CoolDown",
-    Default = false,
-    Callback = function(v) SetFlag("AttackNoCD", v) end
-})
-
-Tabs.Combat:AddToggle("IgnoreSameTeam", {
-    Title = "Ignore Same Team (Aimbot)",
-    Default = true,
-    Callback = function(v) SetFlag("IgnoreSameTeam", v) end
-})
-
-Tabs.Combat:AddToggle("BringMobs", {
-    Title = "Bring Enemy / Mobs",
-    Default = false,
-    Callback = function(v) SetFlag("BringMobs", v) end
-})
-
-Tabs.Combat:AddSlider("NPCHealthSwitch", {
-    Title = "NPC Health % Switch to Weapon",
-    Default = 30,
-    Min = 1,
-    Max = 100,
-    Rounding = 0,
-    Callback = function(v) SetFlag("NPCHealthSwitch", v) end
-})
-
--------------------------------------------------
--- FISHING
--------------------------------------------------
-local Baits = {"Basic Bait", "Good Bait", "Epic Bait", "Carnivore Bait", "Frozen Bait", "Kelp Bait", "Abyssal Bait"}
-local Rods = {"Fishing Rod", "Gold Rod", "Shark Rod", "Shell Rod", "Treasure Rod"}
-
-Tabs.Fish:AddDropdown("SelectBait", {
-    Title = "Select Bait",
-    Values = Baits,
-    Multi = false,
-    Default = 1,
-    Callback = function(v) SetFlag("SelectBait", v) end
-})
-
-Tabs.Fish:AddDropdown("SelectRod", {
-    Title = "Select Fishing Rod",
-    Values = Rods,
-    Multi = false,
-    Default = 1,
-    Callback = function(v) SetFlag("SelectRod", v) end
-})
-
-Tabs.Fish:AddToggle("AutoFishing", {
-    Title = "Auto Fishing",
-    Default = false,
-    Callback = function(v)
-        SetFlag("AutoFishing", v)
-        if v then
-            Notify("Fishing", "Auto Fishing started")
-        end
-    end
-})
-
--------------------------------------------------
--- SHOP / CRAFT
--------------------------------------------------
-Tabs.Shop:AddToggle("AutoStoreFruitShop", {
-    Title = "Auto Store Fruit",
-    Default = false,
-    Callback = function(v) SetFlag("AutoStoreFruitShop", v) end
-})
-
-Tabs.Shop:AddToggle("AutoCraftVolcanic", {
-    Title = "Auto Craft Volcanic Magnet",
-    Default = false,
-    Callback = function(v) SetFlag("AutoCraftVolcanic", v) end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Buy Superhuman",
-    Callback = function() FireComm("BuySuperhuman") end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Buy Godhuman",
-    Callback = function() FireComm("BuyGodhuman") end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Buy Sharkman Karate",
-    Callback = function() FireComm("BuySharkmanKarate") end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Buy Death Step",
-    Callback = function() FireComm("BuyDeathStep") end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Buy Electric Claw",
-    Callback = function() FireComm("BuyElectricClaw") end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Buy Dragon Talon",
-    Callback = function() FireComm("BuyDragonTalon") end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Buy Sanguine Art",
-    Callback = function() FireComm("BuySanguineArt") end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Buy Buso",
-    Callback = function() FireComm("BuyHaki", "Buso") end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Buy Geppo",
-    Callback = function() FireComm("BuyHaki", "Geppo") end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Buy Soru",
-    Callback = function() FireComm("BuyHaki", "Soru") end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Buy Ken",
-    Callback = function() FireComm("BuyHaki", "Ken") end
-})
-
-Tabs.Shop:AddToggle("AutoBuyBusoColorShop", {
-    Title = "Auto Buy Buso Color",
-    Default = false,
-    Callback = function(v) SetFlag("AutoBuyBusoColorShop", v) end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Craft Leviathan Boat",
-    Callback = function() Notify("Craft", "Leviathan Boat") end
-})
-
-Tabs.Shop:AddButton({
-    Title = "Craft Shark Anchor",
-    Callback = function() Notify("Craft", "Shark Anchor") end
-})
-
--------------------------------------------------
--- MISC / SETTINGS
--------------------------------------------------
-Tabs.Misc:AddToggle("AntiAFKToggle", {
-    Title = "Anti AFK",
-    Default = true,
-    Callback = function(v)
-        SetFlag("AntiAFK", v)
-    end
-})
-
-Tabs.Misc:AddToggle("WalkOnWater", {
-    Title = "Walk on Water",
-    Default = false,
-    Callback = function(v)
-        SetFlag("WalkOnWater", v)
-        if v then
-            local part = Instance.new("Part")
-            part.Name = "WalkWater_Part"
-            part.Size = Vector3.new(20, 1, 20)
-            part.Transparency = 1
-            part.Anchored = true
-            part.CanCollide = true
-            part.Parent = workspace
-            Connect("WalkWater", RunService.Heartbeat, function()
-                if HumanoidRootPart then
-                    part.CFrame = CFrame.new(HumanoidRootPart.Position.X, 0.5, HumanoidRootPart.Position.Z)
-                end
-            end)
-        else
-            Disconnect("WalkWater")
-            if workspace:FindFirstChild("WalkWater_Part") then
-                workspace.WalkWater_Part:Destroy()
-            end
-        end
-    end
-})
-
-Tabs.Misc:AddToggle("FullBright", {
-    Title = "Turn on Full Bright",
-    Default = false,
-    Callback = function(v)
-        SetFlag("FullBright", v)
-        if v then
-            Lighting.Brightness = 2
-            Lighting.ClockTime = 14
-            Lighting.FogEnd = 100000
-            Lighting.GlobalShadows = false
-            Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
-        end
-    end
-})
-
-Tabs.Misc:AddToggle("LowCPU", {
-    Title = "Turn on Low CPU",
-    Default = false,
-    Callback = function(v)
-        SetFlag("LowCPU", v)
-        if v then
-            settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-        end
-    end
-})
-
-Tabs.Misc:AddToggle("NoClip", {
-    Title = "Body Clip / NoClip",
-    Default = false,
-    Callback = function(v)
-        SetFlag("NoClip", v)
-        if v then
-            Connect("NoClip", RunService.Stepped, function()
-                if Character then
-                    for _, part in ipairs(Character:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                            part.CanCollide = false
-                        end
-                    end
-                end
-            end)
-        else
-            Disconnect("NoClip")
-        end
-    end
-})
-
-Tabs.Misc:AddToggle("InfAbility", {
-    Title = "Infinite Abilities",
-    Default = false,
-    Callback = function(v) SetFlag("InfAbility", v) end
-})
-
-Tabs.Misc:AddToggle("SafeMode", {
-    Title = "Safe Mode (low health protection)",
-    Default = false,
-    Callback = function(v) SetFlag("SafeMode", v) end
-})
-
-Tabs.Misc:AddButton({
-    Title = "Server Hop (Lowest Players)",
-    Callback = function()
-        Notify("Server Hop", "Looking for low player server...")
-        pcall(function()
-            local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
-            for _, s in ipairs(servers.data or {}) do
-                if s.playing < s.maxPlayers and s.id ~= game.JobId then
-                    TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer)
-                    break
-                end
-            end
-        end)
-    end
-})
-
-Tabs.Misc:AddButton({
-    Title = "Rejoin Server",
-    Callback = function()
-        TeleportService:Teleport(game.PlaceId, LocalPlayer)
-    end
-})
-
-Tabs.Misc:AddButton({
-    Title = "Copy Job ID",
-    Callback = function()
-        setclipboard(tostring(game.JobId))
-        Notify("Job ID", "Copied to clipboard")
-    end
-})
-
-Tabs.Misc:AddToggle("DisableNotify", {
-    Title = "Disable Notify",
-    Default = false,
-    Callback = function(v) SetFlag("DisableNotify", v) end
-})
-
-Tabs.Misc:AddToggle("DisableChat", {
-    Title = "Disable Chat GUI",
-    Default = false,
-    Callback = function(v)
-        pcall(function()
-            StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, not v)
-        end)
-    end
-})
-
-Tabs.Misc:AddSlider("WalkSpeed", {
-    Title = "Walk Speed",
-    Default = 16,
-    Min = 16,
-    Max = 200,
-    Rounding = 0,
-    Callback = function(v)
-        if Humanoid then Humanoid.WalkSpeed = v end
-    end
-})
-
-Tabs.Misc:AddSlider("JumpPower", {
-    Title = "Jump Power",
-    Default = 50,
-    Min = 50,
-    Max = 200,
-    Rounding = 0,
-    Callback = function(v)
-        if Humanoid then Humanoid.JumpPower = v end
-    end
-})
 
 -------------------------------------------------
 -- MAIN TAB INFO
