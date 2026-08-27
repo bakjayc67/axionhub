@@ -8,7 +8,7 @@ Config = {
 	FPSBOOST = false,
 	GOD = true,
 	Saber = true,
-	CDK = true,
+	CDK = false,
 	SkullGuitar = true,
 	RaceV3 = true
 }
