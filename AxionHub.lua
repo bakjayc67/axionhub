@@ -4,13 +4,13 @@ until game:IsLoaded() and game.Players.LocalPlayer
 Config = {
 	UI = true,
 	Team = "Marines",
-	FPS = 15,
-	FPSBOOST = true,
+	FPS = 100,
+	FPSBOOST = false,
 	GOD = true,
-	Saber = false,
-	CDK = false,
-	SkullGuitar = false,
-	RaceV3 = false
+	Saber = true,
+	CDK = true,
+	SkullGuitar = true,
+	RaceV3 = true
 }
 getgenv().ToolNote = nil
 
