@@ -452,7 +452,7 @@ task.spawn(function()
 		pcall(function() oth.unhook(http_request) end)
 	end
 	if HOOK_DETECTED then
-		return warn('[ Axion Hub ] http_request hook detected ! Disabled all http requests')
+		return warn('[ Lotus Hub ] http_request hook detected ! Disabled all http requests')
 	end
 	local req = http_request
 	-- start API
@@ -552,7 +552,7 @@ task.spawn(function()
 		local isNightVal = isNight(game.Lighting.ClockTime)
 		local Elite = {'Diablo', 'Urban', 'Deandre'}
 		local RareBoss = {'rip_indra True Form', 'Dough King', 'Cake Prince', 'Soul Reaper', 'Cursed Captain'}
-		local myNote = getgenv().ToolNote or 'Axion'
+		local myNote = getgenv().ToolNote or 'kaigod'
 		for i, v in ipairs(Elite) do
 			if findMob(v) then
 				sendPayload({
@@ -696,7 +696,7 @@ else
 		end
 	end)
 	local screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "AxionHubGUI"
+	screenGui.Name = "LotusHubGUI"
 	screenGui.ResetOnSpawn = false
 	screenGui.IgnoreGuiInset = true
 	screenGui.Parent = gethui and gethui() or cloneref(game:GetService("CoreGui"))
@@ -766,7 +766,7 @@ else
 		ImageTransparency = 0,
 	}):Play()
 	local titleText = makeLabel(frame, UDim2.new(0.5, 0, 0.48, 0), UDim2.new(0.48, 0, 0.08, 0))
-	titleText.Text = "Axion Hub"
+	titleText.Text = "Lotus Hub"
 	titleText.AnchorPoint = Vector2.new(0.5, 0.5)
 	TweenService:Create(titleText, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		TextTransparency = 0,
@@ -845,7 +845,7 @@ else
 		TextTransparency = 0,
 	}):Play()
 	local discordText = Instance.new("TextLabel", frame)
-	discordText.Text = "Axion"
+	discordText.Text = "discord.gg/piggystore"
 	discordText.Font = Enum.Font.GothamMedium
 	discordText.TextColor3 = Color3.fromRGB(255, 200, 200)
 	discordText.TextTransparency = 0.4
@@ -2166,7 +2166,7 @@ local zQuestProRemote = game.ReplicatedStorage.Remotes:FindFirstChild("RefreshZQ
 if PLACE_ID.sea2() and zQuestProRemote then
 	local zQuestProConnection = zQuestProRemote.OnClientEvent:Connect(function(a)
 		if a == "promptDialogue" then
-			warn("Axion Hub : Finished cutscene")
+			warn("Lotus Hub : Finished cutscene")
 			hopLowServer()
 		end
 	end)
