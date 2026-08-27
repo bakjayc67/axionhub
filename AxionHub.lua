@@ -1211,39 +1211,50 @@ end
 
 FastAttack = function()
 	local char = character
+	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 	local parts = {}
 	for _, v in ipairs(workspace.Enemies:GetChildren()) do
 		local hrp = v:FindFirstChild("HumanoidRootPart")
 		local hum = v:FindFirstChild("Humanoid")
-		if v ~= char and hrp and hum and hum.Health > 0 and plr:DistanceFromCharacter(hrp.Position) <= 35 then
+		if v ~= char and hrp and hum and hum.Health > 0 and plr:DistanceFromCharacter(hrp.Position) <= 60 then
 			for _, _v in ipairs(v:GetChildren()) do
-				if _v:IsA("BasePart") and plr:DistanceFromCharacter(hrp.Position) <= 35 then
+				if _v:IsA("BasePart") then
 					parts[#parts + 1] = { v, _v }
 				end
 			end
 		end
 	end
-	if #parts == 0 then
-		return
-	end
+	if #parts == 0 then return end
 	local tool = char:FindFirstChildOfClass("Tool")
-	if #parts > 0 and tool and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword") then
-		game.ReplicatedStorage.Modules.Net["RE/RegisterAttack"]:FireServer()
-		local head = parts[1][1]:FindFirstChild("Head")
-		game.ReplicatedStorage.Modules.Net["RE/RegisterHit"]:FireServer(
-			head,
-			parts,
-			{},
-			tostring(plr.UserId):sub(2, 4) .. tostring(coroutine.running()):sub(11, 15)
-		)
-		cloneref(r):FireServer(
-			string.gsub("RE/RegisterHit", ".", function(c)
-				return string.char(bit32.bxor(string.byte(c), math.floor(workspace:GetServerTimeNow() / 10 % 10) + 1))
-			end),
-			bit32.bxor(id + 909090, game.ReplicatedStorage.Modules.Net.seed:InvokeServer() * 2),
-			head,
-			parts
-		)
+	if not tool or (tool.ToolTip ~= "Melee" and tool.ToolTip ~= "Sword") then return end
+
+	local head = parts[1][1]:FindFirstChild("Head") or parts[1][2]
+	local net = game.ReplicatedStorage.Modules.Net
+	local seed = net.seed:InvokeServer()
+	local now = workspace:GetServerTimeNow()
+	local xorKey = math.floor(now / 10 % 10) + 1
+
+	net["RE/RegisterAttack"]:FireServer(0.5)
+
+	net["RE/RegisterHit"]:FireServer(
+		head,
+		parts,
+		{},
+		tostring(plr.UserId):sub(2, 4) .. tostring(coroutine.running()):sub(11, 15)
+	)
+
+	local encrypted = string.gsub("RE/RegisterHit", ".", function(c)
+		return string.char(bit32.bxor(string.byte(c), xorKey))
+	end)
+	cloneref(r):FireServer(
+		encrypted,
+		bit32.bxor(id + 909090, seed * 2),
+		head,
+		parts
+	)
+
+	for i = 1, 3 do
+		net["RE/RegisterHit"]:FireServer(head, parts, {}, tostring(plr.UserId):sub(2, 4) .. tostring(i))
 	end
 end
 
