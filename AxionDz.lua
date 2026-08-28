@@ -1,4 +1,4 @@
-loadstring(game:HttpGet("https://raw.githubusercontent.com/AnhDzaiScript/Setting/refs/heads/main/FastMax.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/bakjayc67/axionhub/refs/heads/main/AxionFastAttack.lua"))()
 local function GetBladeHits()
     local targets = {}
     local function GetDistance(v)
