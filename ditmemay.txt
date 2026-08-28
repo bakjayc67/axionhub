@@ -1,0 +1,512 @@
+local Compkiller = loadstring(game:HttpGet("https://raw.githubusercontent.com/4lpaca-pin/CompKiller/refs/heads/main/src/source.luau"))()
+local Notifier = Compkiller.newNotify()
+local ConfigManager = Compkiller:ConfigManager({
+    Directory = "Compkiller-CK",
+    Config = "CK-Config"
+})
+
+Compkiller:Loader("rbxassetid://120245531583106", 1.8).yield()
+
+local Window = Compkiller.new({
+    Name = "COMPKILLER",
+    Keybind = "LeftAlt",
+    Logo = "rbxassetid://120245531583106",
+    Scale = Compkiller.Scale.Window,
+    TextSize = 15,
+})
+
+Notifier.new({
+    Title = "COMPKILLER",
+    Content = "Aimbot / ESP / Mods loaded",
+    Duration = 5,
+    Icon = "rbxassetid://120245531583106"
+})
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+local LP = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local Watermark = Window:Watermark()
+Watermark:AddText({ Icon = "user", Text = LP.Name })
+Watermark:AddText({ Icon = "clock", Text = Compkiller:GetDate() })
+local TimeLabel = Watermark:AddText({ Icon = "timer", Text = "TIME" })
+task.spawn(function()
+    while true do
+        task.wait(1)
+        TimeLabel:SetText(Compkiller:GetTimeNow())
+    end
+end)
+Watermark:AddText({ Icon = "server", Text = Compkiller.Version })
+
+local State = {
+    EnableAimbot = false,
+    TeamCheck = true,
+    VisibleCheck = true,
+    AimMethod = "Camera",
+    AimCondition = "Always",
+    AimPart = "Head",
+    Smoothing = 0.12,
+    EnableTriggerbot = false,
+    TriggerTeamCheck = true,
+    TriggerDelay = 0.05,
+    EnableRCS = false,
+    RCSPullPower = 0.35,
+    RCSSmoothing = 0.2,
+    ShowFOV = false,
+    FOVRadius = 120,
+    FOVColor = Color3.fromRGB(255, 255, 255),
+    EnableESP = false,
+    ESPTeamCheck = false,
+    EnemyCount = false,
+    AimingWarning = false,
+    TeamColor = false,
+    BoxESP = false,
+    CornerBoxMode = false,
+    BoxWallCheck = false,
+    BoxVisibleColor = Color3.fromRGB(0, 255, 100),
+    BoxHiddenColor = Color3.fromRGB(255, 40, 40),
+    FilledBoxes = false,
+    FillColor = Color3.fromRGB(40, 80, 255),
+    Thickness = 2,
+    Skeleton = false,
+    SkeletonVisible = Color3.fromRGB(255, 255, 255),
+    SkeletonHidden = Color3.fromRGB(255, 0, 255),
+    SkeletonThickness = 1.5,
+    Names = false,
+    Distances = false,
+    Tool = false,
+    HealthBar = false,
+    TextColor = Color3.fromRGB(255, 255, 255),
+    EnableChams = false,
+    ChamsTeamCheck = false,
+    ChamsColor = Color3.fromRGB(0, 120, 255),
+    GlowOutline = false,
+    OutlineColor = Color3.fromRGB(255, 255, 255),
+    EnableTPRCM = false,
+    EnableCameraFOV = false,
+    CameraFOVValue = 70,
+    EnableSpinBot = false,
+    SpinSpeed = 20,
+    BunnyHop = false,
+    BhopSpeedBoost = 1.98,
+}
+getgenv().CKState = State
+
+local function isAlive(char)
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    return hum and hum.Health > 0
+end
+local function getChar(plr) return plr and plr.Character end
+local function getRoot(char)
+    return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso"))
+end
+local function getHead(char) return char and char:FindFirstChild("Head") end
+local function sameTeam(plr)
+    if LP.Team and plr.Team then return LP.Team == plr.Team end
+    return false
+end
+local function isVisible(part)
+    if not part then return false end
+    local origin = Camera.CFrame.Position
+    local dir = part.Position - origin
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = { LP.Character, Camera }
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local result = workspace:Raycast(origin, dir, params)
+    return result == nil or result.Instance:IsDescendantOf(part.Parent)
+end
+local function worldToScreen(pos)
+    local v, on = Camera:WorldToViewportPoint(pos)
+    return Vector2.new(v.X, v.Y), on, v.Z
+end
+
+local FOVCircle = Drawing and Drawing.new("Circle") or nil
+if FOVCircle then
+    FOVCircle.Thickness = 1.5
+    FOVCircle.NumSides = 64
+    FOVCircle.Filled = false
+    FOVCircle.Transparency = 0.55
+    FOVCircle.Visible = false
+end
+RunService.RenderStepped:Connect(function()
+    if not FOVCircle then return end
+    FOVCircle.Visible = State.ShowFOV and State.EnableAimbot
+    FOVCircle.Radius = State.FOVRadius
+    FOVCircle.Color = State.FOVColor
+    FOVCircle.Position = UserInputService:GetMouseLocation()
+end)
+
+local function getClosest()
+    local closest, closestDist = nil, State.FOVRadius
+    local mousePos = UserInputService:GetMouseLocation()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LP then continue end
+        if State.TeamCheck and sameTeam(plr) then continue end
+        local char = getChar(plr)
+        if not isAlive(char) then continue end
+        local part = char:FindFirstChild(State.AimPart) or getHead(char) or getRoot(char)
+        if not part then continue end
+        local screen, onScreen = worldToScreen(part.Position)
+        if not onScreen then continue end
+        local dist = (screen - mousePos).Magnitude
+        if dist >= closestDist then continue end
+        if State.VisibleCheck and not isVisible(part) then continue end
+        closest = part
+        closestDist = dist
+    end
+    return closest
+end
+
+RunService.RenderStepped:Connect(function()
+    if not State.EnableAimbot then return end
+    local ok = true
+    if State.AimCondition == "MouseButton2" then
+        ok = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    elseif State.AimCondition == "MouseButton1" then
+        ok = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+    end
+    if not ok then return end
+    local target = getClosest()
+    if not target then return end
+    if State.AimMethod == "Camera" then
+        local goal = CFrame.new(Camera.CFrame.Position, target.Position)
+        Camera.CFrame = Camera.CFrame:Lerp(goal, 1 - math.clamp(State.Smoothing, 0, 0.99))
+    elseif typeof(mousemoverel) == "function" then
+        local screen = worldToScreen(target.Position)
+        local mouse = UserInputService:GetMouseLocation()
+        local delta = (screen - mouse) * (1 - State.Smoothing)
+        mousemoverel(delta.X, delta.Y)
+    end
+end)
+
+local lastTrigger = 0
+RunService.Heartbeat:Connect(function()
+    if not State.EnableTriggerbot then return end
+    if tick() - lastTrigger < State.TriggerDelay then return end
+    local target = getClosest()
+    if not target then return end
+    if State.TriggerTeamCheck then
+        local p = Players:GetPlayerFromCharacter(target.Parent)
+        if p and sameTeam(p) then return end
+    end
+    local screen, on = worldToScreen(target.Position)
+    local mouse = UserInputService:GetMouseLocation()
+    if on and (screen - mouse).Magnitude < 14 then
+        if typeof(mouse1click) == "function" then mouse1click() end
+        lastTrigger = tick()
+    end
+end)
+
+local lastLook = Camera.CFrame.LookVector
+RunService.RenderStepped:Connect(function()
+    if not State.EnableRCS then lastLook = Camera.CFrame.LookVector return end
+    if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        local deltaY = lastLook.Y - Camera.CFrame.LookVector.Y
+        if deltaY > 0 then
+            Camera.CFrame = Camera.CFrame * CFrame.Angles(deltaY * State.RCSPullPower * (1 - State.RCSSmoothing), 0, 0)
+        end
+    end
+    lastLook = Camera.CFrame.LookVector
+end)
+
+local ESPStore = {}
+local function clearPlayerESP(plr)
+    local store = ESPStore[plr]
+    if not store then return end
+    for _, v in pairs(store) do
+        if typeof(v) == "Instance" then pcall(function() v:Destroy() end)
+        elseif type(v) == "table" then
+            for _, d in pairs(v) do if d and d.Remove then pcall(function() d:Remove() end) end end
+        elseif v and v.Remove then pcall(function() v:Remove() end) end
+    end
+    ESPStore[plr] = nil
+end
+local function draw(class, props)
+    if not Drawing then return nil end
+    local d = Drawing.new(class)
+    for k, v in pairs(props or {}) do d[k] = v end
+    return d
+end
+
+local function updateESP()
+    if not State.EnableESP then
+        for p in pairs(ESPStore) do clearPlayerESP(p) end
+        return
+    end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LP then continue end
+        if State.ESPTeamCheck and sameTeam(plr) then clearPlayerESP(plr) continue end
+        local char = getChar(plr)
+        if not isAlive(char) then clearPlayerESP(plr) continue end
+        local root = getRoot(char)
+        local head = getHead(char)
+        if not root or not head then clearPlayerESP(plr) continue end
+        local screenHead, onH, zH = worldToScreen(head.Position + Vector3.new(0, 0.4, 0))
+        local screenRoot, onR = worldToScreen(root.Position)
+        if not onH and not onR then clearPlayerESP(plr) continue end
+
+        local visible = isVisible(root)
+        local boxCol = (State.BoxWallCheck and not visible) and State.BoxHiddenColor or State.BoxVisibleColor
+        local skelCol = (State.BoxWallCheck and not visible) and State.SkeletonHidden or State.SkeletonVisible
+
+        if not ESPStore[plr] then
+            ESPStore[plr] = {
+                box = draw("Square", { Thickness = State.Thickness, Filled = false, Visible = true }),
+                name = draw("Text", { Size = 13, Center = true, Outline = true, Visible = true }),
+                dist = draw("Text", { Size = 12, Center = true, Outline = true, Visible = true }),
+                tool = draw("Text", { Size = 12, Center = true, Outline = true, Visible = true }),
+                hpBG = draw("Square", { Filled = true, Color = Color3.new(0,0,0), Visible = true }),
+                hpFG = draw("Square", { Filled = true, Color = Color3.fromRGB(0,255,80), Visible = true }),
+                skeleton = {},
+                hl = nil,
+            }
+            for i = 1, 12 do
+                ESPStore[plr].skeleton[i] = draw("Line", { Thickness = State.SkeletonThickness, Visible = true })
+            end
+        end
+
+        local s = ESPStore[plr]
+        local scale = math.clamp(1000 / math.max(zH, 1), 0.35, 8)
+        local h = 52 * scale
+        local w = 28 * scale
+        local boxPos = Vector2.new(screenHead.X - w/2, screenHead.Y)
+        local boxSize = Vector2.new(w, h)
+
+        if s.box then
+            s.box.Visible = State.BoxESP
+            s.box.Position = boxPos
+            s.box.Size = boxSize
+            s.box.Color = boxCol
+            s.box.Thickness = State.Thickness
+            s.box.Filled = State.FilledBoxes
+            if State.FilledBoxes then s.box.Color = State.FillColor s.box.Transparency = 0.65
+            else s.box.Transparency = 0 end
+        end
+        if s.name then
+            s.name.Visible = State.Names
+            s.name.Text = plr.Name
+            s.name.Position = Vector2.new(screenHead.X, screenHead.Y - 16)
+            s.name.Color = State.TextColor
+        end
+        if s.dist then
+            local d = math.floor((root.Position - Camera.CFrame.Position).Magnitude)
+            s.dist.Visible = State.Distances
+            s.dist.Text = d .. "m"
+            s.dist.Position = Vector2.new(screenHead.X, screenHead.Y + h + 2)
+            s.dist.Color = State.TextColor
+        end
+        if s.tool then
+            local tool = char:FindFirstChildOfClass("Tool")
+            s.tool.Visible = State.Tool and tool ~= nil
+            s.tool.Text = tool and tool.Name or ""
+            s.tool.Position = Vector2.new(screenHead.X, screenHead.Y + h + 14)
+            s.tool.Color = Color3.fromRGB(255, 200, 80)
+        end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if s.hpBG and s.hpFG and hum then
+            local pct = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+            s.hpBG.Visible = State.HealthBar
+            s.hpFG.Visible = State.HealthBar
+            s.hpBG.Position = Vector2.new(boxPos.X - 5, boxPos.Y)
+            s.hpBG.Size = Vector2.new(3, h)
+            s.hpFG.Position = Vector2.new(boxPos.X - 5, boxPos.Y + h * (1 - pct))
+            s.hpFG.Size = Vector2.new(3, h * pct)
+            s.hpFG.Color = Color3.fromRGB(255 * (1 - pct), 255 * pct, 40)
+        end
+        if State.Skeleton and s.skeleton then
+            local function bone(a, b, idx)
+                local line = s.skeleton[idx]
+                if not line then return end
+                local pa = char:FindFirstChild(a, true)
+                local pb = char:FindFirstChild(b, true)
+                if pa and pb and pa:IsA("BasePart") and pb:IsA("BasePart") then
+                    local sa, oa = worldToScreen(pa.Position)
+                    local sb, ob = worldToScreen(pb.Position)
+                    line.Visible = oa and ob
+                    line.From = sa
+                    line.To = sb
+                    line.Color = skelCol
+                    line.Thickness = State.SkeletonThickness
+                else line.Visible = false end
+            end
+            bone("Head", "UpperTorso", 1)
+            bone("UpperTorso", "LowerTorso", 2)
+            bone("UpperTorso", "LeftUpperArm", 3)
+            bone("LeftUpperArm", "LeftLowerArm", 4)
+            bone("LeftLowerArm", "LeftHand", 5)
+            bone("UpperTorso", "RightUpperArm", 6)
+            bone("RightUpperArm", "RightLowerArm", 7)
+            bone("RightLowerArm", "RightHand", 8)
+            bone("LowerTorso", "LeftUpperLeg", 9)
+            bone("LeftUpperLeg", "LeftLowerLeg", 10)
+            bone("LowerTorso", "RightUpperLeg", 11)
+            bone("RightUpperLeg", "RightLowerLeg", 12)
+            bone("Head", "Torso", 1)
+            bone("Torso", "Left Arm", 3)
+            bone("Torso", "Right Arm", 6)
+            bone("Torso", "Left Leg", 9)
+            bone("Torso", "Right Leg", 11)
+        elseif s.skeleton then
+            for _, line in pairs(s.skeleton) do if line then line.Visible = false end end
+        end
+        if State.EnableChams and not (State.ChamsTeamCheck and sameTeam(plr)) then
+            if not s.hl or not s.hl.Parent then
+                local hl = Instance.new("Highlight")
+                hl.Name = "CKChams"
+                hl.FillColor = State.ChamsColor
+                hl.OutlineColor = State.OutlineColor
+                hl.FillTransparency = 0.45
+                hl.OutlineTransparency = State.GlowOutline and 0 or 1
+                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                hl.Adornee = char
+                hl.Parent = char
+                s.hl = hl
+            else
+                s.hl.FillColor = State.ChamsColor
+                s.hl.OutlineColor = State.OutlineColor
+                s.hl.OutlineTransparency = State.GlowOutline and 0 or 1
+                s.hl.Enabled = true
+            end
+        elseif s.hl then s.hl.Enabled = false end
+    end
+end
+RunService.RenderStepped:Connect(updateESP)
+Players.PlayerRemoving:Connect(clearPlayerESP)
+
+local warnGui
+RunService.Heartbeat:Connect(function()
+    if not State.AimingWarning then if warnGui then warnGui.Enabled = false end return end
+    local hit = false
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LP or (State.TeamCheck and sameTeam(plr)) then continue end
+        local char = getChar(plr)
+        if not isAlive(char) then continue end
+        local head = getHead(char)
+        if not head then continue end
+        local look = head.CFrame.LookVector
+        local toMe = (Camera.CFrame.Position - head.Position).Unit
+        if look:Dot(toMe) > 0.9 and (head.Position - Camera.CFrame.Position).Magnitude < 280 then
+            hit = true break
+        end
+    end
+    if not warnGui then
+        local sg = Instance.new("ScreenGui")
+        sg.Name = "CKAimWarn"
+        sg.ResetOnSpawn = false
+        sg.Parent = (gethui and gethui()) or CoreGui
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(0, 260, 0, 26)
+        lbl.Position = UDim2.new(0.5, -130, 0.07, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = "▲ Enemy aiming at you"
+        lbl.TextColor3 = Color3.fromRGB(255, 55, 55)
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 15
+        lbl.Parent = sg
+        warnGui = sg
+    end
+    warnGui.Enabled = hit
+end)
+
+UserInputService.JumpRequest:Connect(function()
+    if not State.BunnyHop then return end
+    local char = getChar(LP)
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.FloorMaterial == Enum.Material.Air then return end
+    hum.Jump = true
+    local root = getRoot(char)
+    if root then
+        local vel = root.AssemblyLinearVelocity
+        local flat = Vector3.new(vel.X, 0, vel.Z)
+        if flat.Magnitude > 1 then
+            root.AssemblyLinearVelocity = flat.Unit * (flat.Magnitude * State.BhopSpeedBoost) + Vector3.new(0, vel.Y, 0)
+        end
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if State.EnableSpinBot then
+        local root = getRoot(getChar(LP))
+        if root then root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(State.SpinSpeed), 0) end
+    end
+    if State.EnableCameraFOV then Camera.FieldOfView = State.CameraFOVValue end
+end)
+
+-- UI
+Window:DrawCategory({ Name = "Combat" })
+local AimTab = Window:DrawTab({ Name = "Aimbot", Icon = "crosshair", EnableScrolling = true })
+local AimLeft = AimTab:DrawSection({ Name = "Main Aimbot", Position = "left" })
+local AimRight = AimTab:DrawSection({ Name = "Triggerbot / RCS / FOV", Position = "right" })
+
+AimLeft:AddToggle({ Name = "Enable Aimbot", Flag = "EnableAimbot", Default = State.EnableAimbot, Callback = function(v) State.EnableAimbot = v end })
+AimLeft:AddToggle({ Name = "Team Check", Flag = "TeamCheck", Default = State.TeamCheck, Callback = function(v) State.TeamCheck = v end })
+AimLeft:AddToggle({ Name = "Visible Check", Flag = "VisibleCheck", Default = State.VisibleCheck, Callback = function(v) State.VisibleCheck = v end })
+AimLeft:AddDropdown({ Name = "Aim Method", Flag = "AimMethod", Default = State.AimMethod, Values = {"Camera","Mouse"}, Callback = function(v) State.AimMethod = v end })
+AimLeft:AddDropdown({ Name = "Aim Condition", Flag = "AimCondition", Default = State.AimCondition, Values = {"Always","MouseButton2","MouseButton1"}, Callback = function(v) State.AimCondition = v end })
+AimLeft:AddDropdown({ Name = "Aim Part", Flag = "AimPart", Default = State.AimPart, Values = {"Head","HumanoidRootPart","UpperTorso","Torso"}, Callback = function(v) State.AimPart = v end })
+AimLeft:AddSlider({ Name = "Smoothing", Flag = "Smoothing", Min = 0, Max = 0.5, Default = State.Smoothing, Round = 2, Callback = function(v) State.Smoothing = v end })
+
+AimRight:AddToggle({ Name = "Enable Triggerbot", Flag = "EnableTriggerbot", Default = State.EnableTriggerbot, Callback = function(v) State.EnableTriggerbot = v end })
+AimRight:AddToggle({ Name = "Trigger Team Check", Flag = "TriggerTeamCheck", Default = State.TriggerTeamCheck, Callback = function(v) State.TriggerTeamCheck = v end })
+AimRight:AddSlider({ Name = "Trigger Delay", Flag = "TriggerDelay", Min = 0, Max = 0.3, Default = State.TriggerDelay, Round = 2, Callback = function(v) State.TriggerDelay = v end })
+AimRight:AddToggle({ Name = "Enable RCS", Flag = "EnableRCS", Default = State.EnableRCS, Callback = function(v) State.EnableRCS = v end })
+AimRight:AddSlider({ Name = "RCS Pull Power", Flag = "RCSPullPower", Min = 0, Max = 1, Default = State.RCSPullPower, Round = 2, Callback = function(v) State.RCSPullPower = v end })
+AimRight:AddSlider({ Name = "RCS Smoothing", Flag = "RCSSmoothing", Min = 0, Max = 1, Default = State.RCSSmoothing, Round = 2, Callback = function(v) State.RCSSmoothing = v end })
+AimRight:AddToggle({ Name = "Show FOV", Flag = "ShowFOV", Default = State.ShowFOV, Callback = function(v) State.ShowFOV = v end })
+AimRight:AddSlider({ Name = "FOV Radius", Flag = "FOVRadius", Min = 20, Max = 400, Default = State.FOVRadius, Round = 0, Callback = function(v) State.FOVRadius = v end })
+AimRight:AddColorPicker({ Name = "FOV Color", Flag = "FOVColor", Default = State.FOVColor, Callback = function(v) State.FOVColor = v end })
+
+Window:DrawCategory({ Name = "Visuals" })
+local ESPTab = Window:DrawTab({ Name = "ESP", Icon = "eye", EnableScrolling = true })
+local ESPLeft = ESPTab:DrawSection({ Name = "Box & Colors", Position = "left" })
+local ESPRight = ESPTab:DrawSection({ Name = "Skeleton / Info / Chams", Position = "right" })
+
+ESPLeft:AddToggle({ Name = "Enable ESP", Flag = "EnableESP", Default = State.EnableESP, Callback = function(v) State.EnableESP = v end })
+ESPLeft:AddToggle({ Name = "ESP Team Check", Flag = "ESPTeamCheck", Default = State.ESPTeamCheck, Callback = function(v) State.ESPTeamCheck = v end })
+ESPLeft:AddToggle({ Name = "Enemy Count", Flag = "EnemyCount", Default = State.EnemyCount, Callback = function(v) State.EnemyCount = v end })
+ESPLeft:AddToggle({ Name = "Aiming Warning", Flag = "AimingWarning", Default = State.AimingWarning, Callback = function(v) State.AimingWarning = v end })
+ESPLeft:AddToggle({ Name = "Team Color", Flag = "TeamColor", Default = State.TeamColor, Callback = function(v) State.TeamColor = v end })
+ESPLeft:AddToggle({ Name = "Box ESP", Flag = "BoxESP", Default = State.BoxESP, Callback = function(v) State.BoxESP = v end })
+ESPLeft:AddToggle({ Name = "Corner Box Mode", Flag = "CornerBoxMode", Default = State.CornerBoxMode, Callback = function(v) State.CornerBoxMode = v end })
+ESPLeft:AddToggle({ Name = "Box WallCheck Color", Flag = "BoxWallCheck", Default = State.BoxWallCheck, Callback = function(v) State.BoxWallCheck = v end })
+ESPLeft:AddColorPicker({ Name = "Box Visible Color", Flag = "BoxVisibleColor", Default = State.BoxVisibleColor, Callback = function(v) State.BoxVisibleColor = v end })
+ESPLeft:AddColorPicker({ Name = "Box Hidden Color", Flag = "BoxHiddenColor", Default = State.BoxHiddenColor, Callback = function(v) State.BoxHiddenColor = v end })
+ESPLeft:AddToggle({ Name = "Filled Boxes", Flag = "FilledBoxes", Default = State.FilledBoxes, Callback = function(v) State.FilledBoxes = v end })
+ESPLeft:AddColorPicker({ Name = "Fill Color", Flag = "FillColor", Default = State.FillColor, Callback = function(v) State.FillColor = v end })
+ESPLeft:AddSlider({ Name = "Thickness", Flag = "Thickness", Min = 1, Max = 4, Default = State.Thickness, Round = 0, Callback = function(v) State.Thickness = v end })
+
+ESPRight:AddToggle({ Name = "Skeleton", Flag = "Skeleton", Default = State.Skeleton, Callback = function(v) State.Skeleton = v end })
+ESPRight:AddColorPicker({ Name = "Skeleton Visible", Flag = "SkeletonVisible", Default = State.SkeletonVisible, Callback = function(v) State.SkeletonVisible = v end })
+ESPRight:AddColorPicker({ Name = "Skeleton Hidden", Flag = "SkeletonHidden", Default = State.SkeletonHidden, Callback = function(v) State.SkeletonHidden = v end })
+ESPRight:AddSlider({ Name = "Skeleton Thickness", Flag = "SkeletonThickness", Min = 0.5, Max = 3, Default = State.SkeletonThickness, Round = 1, Callback = function(v) State.SkeletonThickness = v end })
+ESPRight:AddToggle({ Name = "Names", Flag = "Names", Default = State.Names, Callback = function(v) State.Names = v end })
+ESPRight:AddToggle({ Name = "Distances", Flag = "Distances", Default = State.Distances, Callback = function(v) State.Distances = v end })
+ESPRight:AddToggle({ Name = "Tool", Flag = "Tool", Default = State.Tool, Callback = function(v) State.Tool = v end })
+ESPRight:AddToggle({ Name = "Health Bar", Flag = "HealthBar", Default = State.HealthBar, Callback = function(v) State.HealthBar = v end })
+ESPRight:AddColorPicker({ Name = "Text Color", Flag = "TextColor", Default = State.TextColor, Callback = function(v) State.TextColor = v end })
+ESPRight:AddToggle({ Name = "Enable Chams", Flag = "EnableChams", Default = State.EnableChams, Callback = function(v) State.EnableChams = v end })
+ESPRight:AddToggle({ Name = "Chams Team Check", Flag = "ChamsTeamCheck", Default = State.ChamsTeamCheck, Callback = function(v) State.ChamsTeamCheck = v end })
+ESPRight:AddColorPicker({ Name = "Chams Color", Flag = "ChamsColor", Default = State.ChamsColor, Callback = function(v) State.ChamsColor = v end })
+ESPRight:AddToggle({ Name = "Glow / Outline", Flag = "GlowOutline", Default = State.GlowOutline, Callback = function(v) State.GlowOutline = v end })
+ESPRight:AddColorPicker({ Name = "Outline Color", Flag = "OutlineColor", Default = State.OutlineColor, Callback = function(v) State.OutlineColor = v end })
+
+Window:DrawCategory({ Name = "Misc" })
+local ModTab = Window:DrawTab({ Name = "Modifications", Icon = "settings", Type = "Single", EnableScrolling = true })
+local ModSec = ModTab:DrawSection({ Name = "Modifications", Position = "left" })
+
+ModSec:AddToggle({ Name = "Enable TP RCM", Flag = "EnableTPRCM", Default = State.EnableTPRCM, Callback = function(v) State.EnableTPRCM = v end })
+ModSec:AddToggle({ Name = "Enable Camera FOV", Flag = "EnableCameraFOV", Default = State.EnableCameraFOV, Callback = function(v) State.EnableCameraFOV = v end })
+ModSec:AddSlider({ Name = "Camera FOV Value", Flag = "CameraFOVValue", Min = 50, Max = 120, Default = State.CameraFOVValue, Round = 0, Callback = function(v) State.CameraFOVValue = v end })
+ModSec:AddToggle({ Name = "Enable Spin Bot", Flag = "EnableSpinBot", Default = State.EnableSpinBot, Callback = function(v) State.EnableSpinBot = v end })
+ModSec:AddSlider({ Name = "Spin Speed", Flag = "SpinSpeed", Min = 1, Max = 50, Default = State.SpinSpeed, Round = 0, Callback = function(v) State.SpinSpeed = v end })
+ModSec:AddToggle({ Name = "Bunny Hop (BHopping)", Flag = "BunnyHop", Default = State.BunnyHop, Callback = function(v) State.BunnyHop = v end })
+ModSec:AddSlider({ Name = "Bhop Speed Boost", Flag = "BhopSpeedBoost", Min = 1, Max = 3, Default = State.BhopSpeedBoost, Round = 2, Callback = function(v) State.BhopSpeedBoost = v end })
+
+local ConfigUI = Window:DrawConfig({ Name = "Config", Icon = "folder", Config = ConfigManager })
+ConfigUI:Init()
+
+print("[COMPKILLER] Aimbot / ESP / Mods ready | LeftAlt toggle")
